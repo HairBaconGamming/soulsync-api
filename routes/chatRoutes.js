@@ -3,6 +3,7 @@ const router = express.Router();
 const User = require('../models/User');
 const auth = require('../middlewares/auth');
 const groq = require('../utils/groqClient');
+const axios = require('axios');
 
 // --- CÁC HÀM QUẢN LÝ SESSIONS ---
 router.get('/sessions', auth, async (req, res) => {
