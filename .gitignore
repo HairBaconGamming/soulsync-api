@@ -1,0 +1,81 @@
+# =========================================================
+# 1. THƯ MỤC THƯ VIỆN (DEPENDENCIES)
+# =========================================================
+node_modules/
+jspm_packages/
+.pnp
+.pnp.js
+
+# =========================================================
+# 2. FILE BẢO MẬT & MÔI TRƯỜNG (ENVIRONMENT VARIABLES)
+# Tùyệt đối không bao giờ đưa các file này lên GitHub!
+# =========================================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+
+# =========================================================
+# 3. THƯ MỤC CHỨA CODE ĐÃ BUILD (PRODUCTION BUILD)
+# =========================================================
+/dist/
+/build/
+/out/
+/.next/
+
+# =========================================================
+# 4. FILE NHẬT KÝ LỖI (LOGS)
+# =========================================================
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# =========================================================
+# 5. CÁC TỆP CỦA HỆ ĐIỀU HÀNH (OS FILES)
+# =========================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# =========================================================
+# 6. THƯ MỤC CỦA CÔNG CỤ LẬP TRÌNH (IDE / EDITORS)
+# =========================================================
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.prettierrc.json.swp
+
+# =========================================================
+# 7. CACHE CỦA CÁC CÔNG CỤ KHÁC (ESLINT, NPM, YARN)
+# =========================================================
+.npm
+.eslintcache
+.stylelintcache
+.vite/
+.parcel-cache/
+
+# =========================================================
+# 8. TESTING & COVERAGE
+# =========================================================
+coverage/
+.nyc_output/
+
+# =========================================================
+# 9. DỮ LIỆU UPLOAD LÊN APP (Nếu có dùng Multer lưu ảnh local)
+# =========================================================
+uploads/
+public/uploads/
