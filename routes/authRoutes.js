@@ -148,32 +148,56 @@ router.get('/google/callback', async (req, res) => {
 router.post('/google-setup', async (req, res) => {
     try {
         const { tempToken, username, password } = req.body;
-        const decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
-        
+
+        // 1. Kiểm tra Token có tồn tại không
+        if (!tempToken) return res.status(400).json({ error: "Không tìm thấy mã xác thực từ Google." });
+
+        // 2. Giải mã và kiểm tra JWT
+        let decoded;
+        try {
+            decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
+        } catch (jwtErr) {
+            return res.status(400).json({ error: "Phiên kết nối Google đã thực sự hết hạn hoặc không hợp lệ." });
+        }
+
+        // 3. LUẬT USERNAME NGHIÊM KHẮC
+        // Phải bắt đầu bằng chữ (a-z), chỉ chứa chữ thường và số
+        const usernameRegex = /^[a-z][a-z0-9]*$/;
+        if (!usernameRegex.test(username)) {
+            return res.status(400).json({ error: "Username phải bắt đầu bằng chữ cái thường, chỉ dùng chữ và số cậu nhé!" });
+        }
+
+        // 4. Kiểm tra trùng Username
+        const existingUser = await User.findOne({ username });
+        if (existingUser) return res.status(400).json({ error: "Username này đã có người dùng rồi." });
+
+        // 5. Tạo User mới với DisplayName mặc định là Username
         const hashedPassword = await bcrypt.hash(password, 10);
         const newUser = new User({
-            username, 
-            email: decoded.email, // Lưu email từ Google
+            username: username,
+            displayName: username, // Tên hiển thị mặc định
+            email: decoded.email,
             password: hashedPassword,
-            avatar: decoded.picture, // Lưu ảnh từ Google
+            avatar: decoded.picture,
             hwid: decoded.hwid
         });
+        
         await newUser.save();
 
         const token = jwt.sign({ id: newUser._id, userId: newUser._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
-
-        // QUAN TRỌNG: Phải trả về đầy đủ Object user
         res.json({ 
             token, 
             user: { 
                 username: newUser.username, 
+                displayName: newUser.displayName,
                 email: newUser.email, 
                 avatar: newUser.avatar 
             } 
         });
 
     } catch (error) {
-        res.status(400).json({ error: "Phiên kết nối Google đã hết hạn." });
+        console.error("🚨 Lỗi Google Setup:", error);
+        res.status(500).json({ error: "Lỗi hệ thống khi tạo tài khoản." });
     }
 });
 
