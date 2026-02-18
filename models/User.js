@@ -10,6 +10,8 @@ const SessionSchema = new mongoose.Schema({
 const UserSchema = new mongoose.Schema({
     username: { type: String, unique: true, required: true },
     password: { type: String, required: true },
+    resetPasswordOtp: { type: String, default: null },
+    resetPasswordExpires: { type: Date, default: null }
     userContext: { type: String, default: "Người dùng mới, chưa có thông tin." }, 
     sessions: [SessionSchema], 
     moodHistory: [{ 

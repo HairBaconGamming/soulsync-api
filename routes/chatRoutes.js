@@ -138,6 +138,26 @@ router.get('/sessions', authMiddleware, async (req, res) => {
 });
 
 // ==========================================
+// 5. LẤY CHI TIẾT LỊCH SỬ TIN NHẮN CỦA 1 ĐOẠN CHAT
+// ==========================================
+router.get('/sessions/:id', authMiddleware, async (req, res) => {
+    try {
+        const user = await User.findById(req.userId);
+        if (!user) return res.status(404).json({ message: "Không tìm thấy người dùng." });
+
+        // Tìm đoạn chat theo ID
+        const session = user.sessions.id(req.params.id);
+        if (!session) return res.status(404).json({ message: "Không tìm thấy đoạn chat." });
+
+        // Trả về toàn bộ mảng tin nhắn của đoạn chat đó
+        res.json(session.messages);
+    } catch (error) {
+        console.error("Lỗi get session messages:", error);
+        res.status(500).json({ message: "Lỗi server" });
+    }
+});
+
+// ==========================================
 // 3. ĐỔI TÊN ĐOẠN CHAT
 // ==========================================
 router.put('/sessions/:id', authMiddleware, async (req, res) => {

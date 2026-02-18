@@ -20,6 +20,7 @@
     "groq-sdk": "^0.37.0",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.2.1",
-    "msedge-tts": "^2.0.4"
+    "msedge-tts": "^2.0.4",
+    "nodemailer": "^8.0.1"
   }
 }
