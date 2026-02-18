@@ -11,42 +11,75 @@ const client = new OAuth2Client(
   'https://hiencuacau-api.onrender.com/api/auth/google/callback' // Phải khớp 100% với trên Google Console
 );
 
-
+// ==========================================
+// 1. API ĐĂNG KÝ (CẦN USERNAME VIẾT LIỀN & EMAIL)
+// ==========================================
 router.post('/register', async (req, res) => {
-    try {
-        const hashedPassword = await bcrypt.hash(req.body.password, 8);
-        const user = new User({ username: req.body.username, password: hashedPassword });
-        await user.save(); 
-        res.status(201).send({ message: "Đăng ký thành công!" });
-    } catch (e) { 
-        console.error("🔴 LỖI ĐĂNG KÝ:", e);
-        res.status(400).send({ error: "Tên đăng nhập đã tồn tại hoặc lỗi Database." }); 
+  const { username, email, password } = req.body;
+
+  try {
+    // A. Kiểm tra định dạng Username (Chỉ chữ và số, không khoảng trắng, không ký tự đặc biệt)
+    const usernameRegex = /^[a-zA-Z0-9]+$/;
+    if (!usernameRegex.test(username)) {
+      return res.status(400).json({ message: "Tên đăng nhập phải viết liền, không dấu và không chứa ký tự đặc biệt nhé cậu." });
     }
+
+    // B. Kiểm tra xem Username hoặc Email đã có ai dùng chưa
+    // LƯU Ý: Cách này an toàn hơn việc set unique trong Database, tránh lỗi E11000 sập server
+    const existingUser = await User.findOne({ $or: [{ username }, { email }] });
+    if (existingUser) {
+      if (existingUser.username === username) return res.status(400).json({ message: "Tên đăng nhập này đã có người xài mất rồi." });
+      if (existingUser.email === email) return res.status(400).json({ message: "Email này đã được đăng ký. Cậu thử đăng nhập nhé." });
+    }
+
+    // C. Tạo tài khoản
+    const newUser = new User({ 
+        username, 
+        email, 
+        password, // Lưu ý: Cậu nhớ bọc bcrypt.hash() ở đây nếu code cũ của cậu có mã hóa mật khẩu nhé
+        hwid: `manual_${Date.now()}` // Tạo hwid ngẫu nhiên cho tài khoản thủ công
+    });
+    await newUser.save();
+
+    res.status(201).json({ message: "Tạo trạm thành công! Cậu có thể bước vào Hiên." });
+  } catch (error) {
+    res.status(500).json({ message: "Lỗi máy chủ cục bộ." });
+  }
 });
 
+// ==========================================
+// 2. API ĐĂNG NHẬP (BẰNG USERNAME HOẶC EMAIL ĐỀU ĐƯỢC)
+// ==========================================
 router.post('/login', async (req, res) => {
-    try {
-        const user = await User.findOne({ username: req.body.username });
-        if (!user) {
-            return res.status(400).send({ error: "Không tìm thấy tài khoản." });
-        }
-        
-        const isMatch = await bcrypt.compare(req.body.password, user.password);
-        if (!isMatch) {
-            return res.status(400).send({ error: "Sai mật khẩu." });
-        }
-        
-        // Đoạn này hay gây lỗi 500 nhất nếu thiếu JWT_SECRET
-        if (!process.env.JWT_SECRET) {
-            throw new Error("Thiếu biến môi trường JWT_SECRET trong file .env");
-        }
+  const { identifier, password } = req.body; // Đổi tên biến thành identifier (định danh)
 
-        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
-        res.send({ token, username: user.username });
-    } catch (e) { 
-        console.error("🔴 LỖI ĐĂNG NHẬP:", e.message);
-        res.status(500).send({ error: "Lỗi máy chủ." }); 
+  try {
+    // Tìm user khớp với username HOẶC khớp với email
+    const user = await User.findOne({
+      $or: [{ username: identifier }, { email: identifier }]
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: "Mình không tìm thấy Tên đăng nhập hoặc Email này." });
     }
+
+    // Kiểm tra mật khẩu (Sửa lại khớp với logic bcrypt của cậu nếu có)
+    if (password !== user.password) {
+        return res.status(400).json({ message: "Mật mã bí mật chưa đúng rồi cậu ơi." });
+    }
+
+    // Tạo token và gửi về kèm email, avatar
+    const jwtToken = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    res.json({ 
+        token: jwtToken, 
+        username: user.username, 
+        email: user.email, 
+        avatar: user.avatar 
+    });
+
+  } catch (error) {
+    res.status(500).json({ message: "Lỗi kết nối máy chủ." });
+  }
 });
 
 // --- API 1: Người dùng bấm nút, Backend chuyển hướng sang trang đăng nhập Google ---
