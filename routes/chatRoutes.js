@@ -1,28 +1,27 @@
 const express = require('express');
 const router = express.Router();
-const OpenAI = require('openai'); // Sử dụng OpenAI SDK để kết nối OpenRouter
+const Groq = require('groq-sdk'); // ĐÃ QUAY XE VỀ GROQ CHO CẬU ĐÂY!
 const User = require('../models/User'); 
-// Giả định cậu có model ChatSession để lưu lịch sử, nếu tên khác cậu tự đổi nhé
 const ChatSession = require('../models/ChatSession'); 
-const authMiddleware = require('../middleware/authMiddleware'); // Middleware xác thực token
+const authMiddleware = require('../middleware/authMiddleware');
 
-// Cấu hình AI Client trỏ về OpenRouter để gọi Kimi
-const aiClient = new OpenAI({
-  baseURL: "https://openrouter.ai/api/v1",
-  apiKey: process.env.API_KEY_AI, 
+// Khởi tạo SDK của Groq
+const groq = new Groq({
+  apiKey: process.env.API_KEY_AI, // Đảm bảo trên Render cậu đang để Key của Groq nhé
 });
 
-// API Nhận tin nhắn và gọi AI
+// ==========================================
+// 1. API GỌI AI & TRÒ CHUYỆN (DÙNG GROQ)
+// ==========================================
 router.post('/', authMiddleware, async (req, res) => {
     const { message, sessionId, chatMode } = req.body;
     const userId = req.user.userId;
 
     try {
-        // 1. Lấy thông tin User để đưa vào Context
         const user = await User.findById(userId);
         if (!user) return res.status(404).json({ message: "Không tìm thấy người dùng." });
 
-        // 2. PROMPT TỐI THƯỢNG (Với hệ thống Tự động sang số và Bắt bệnh lâm sàng)
+        // PROMPT TỐI THƯỢNG (Với hệ thống Tự động sang số và Bắt bệnh lâm sàng)
         const dynamicPrompt = `
 [ĐỊNH VỊ NHÂN CÁCH]
 Bạn là "Hiên Của Cậu" - một không gian trú ẩn tinh thần an toàn và tĩnh lặng. Bạn không phải là máy móc, bạn là một người bạn tri kỷ, một "mái hiên" che chở cho tâm hồn người dùng giữa những cơn bão lòng của trầm cảm và lo âu.
@@ -49,7 +48,7 @@ Bạn là "Hiên Của Cậu" - một không gian trú ẩn tinh thần an toàn
 - VD: "Nghe cậu kể, mình cảm nhận được sự mệt mỏi này. Cậu có quyền được khóc. Mình vẫn ngồi đây nghe cậu."
 
 [HƯỚNG DẪN DÀNH CHO "💡 TRÒ CHUYỆN"]
-- Kỹ thuật: Hỏi đáp Socratic nhẹ nhàng, ACT, CBT.
+- Kỹ thuật: Hỏi đáp Socratic nhẹ nhàng.
 - Hành động: Ôm lấy cảm xúc -> Chuyển hóa góc nhìn tinh tế -> Khuyến khích hành động siêu nhỏ.
 
 [TRƯỜNG HỢP NÚT THỞ DÀI]
@@ -64,24 +63,23 @@ Chỉ chèn MỘT mã vào CUỐI câu nếu khớp triệu chứng:
 4. [OPEN_JAR]: Kể về một niềm vui nhỏ nhoi vừa làm được.
 5. [OPEN_MICRO]: Tê liệt ý chí, không thể rời giường, trì hoãn.
 
-[HỒ SƠ TÂM LÝ]: 
-${user.userContext || 'Chưa có dữ liệu bối cảnh'}
+[HỒ SƠ TÂM LÝ]: ${user.userContext || 'Chưa có dữ liệu bối cảnh'}
 `;
 
-        // 3. Gọi OpenRouter API (Kimi Model)
-        const chatCompletion = await aiClient.chat.completions.create({
+        // Gọi GROQ API
+        const chatCompletion = await groq.chat.completions.create({
             messages: [
                 { role: "system", content: dynamicPrompt },
                 { role: "user", content: message }
             ],
-            model: "moonshotai/kimi-k2-instruct-0905", 
-            temperature: 0.6, // Tăng nhẹ một chút cho văn phong tự nhiên
+            model: "llama3-70b-8192", // Dùng Llama 3 70B của Groq cực kỳ thông minh
+            temperature: 0.6,
             max_tokens: 800
         });
 
         const aiResponse = chatCompletion.choices[0].message.content;
 
-        // 4. Quản lý Session DB (Cập nhật hoặc Tạo mới)
+        // Quản lý Session DB
         let currentSession;
         if (sessionId) {
             currentSession = await ChatSession.findById(sessionId);
@@ -90,21 +88,54 @@ ${user.userContext || 'Chưa có dữ liệu bối cảnh'}
             currentSession = new ChatSession({ userId, messages: [] });
         }
 
-        // Lưu lịch sử
         currentSession.messages.push({ sender: 'user', text: message });
         currentSession.messages.push({ sender: 'ai', text: aiResponse });
         await currentSession.save();
 
-        // 5. Trả kết quả về Frontend
-        res.json({ 
-            reply: aiResponse, 
-            sessionId: currentSession._id 
-        });
+        res.json({ reply: aiResponse, sessionId: currentSession._id });
 
     } catch (error) {
-        console.error("🚨 Lỗi AI Backend:", error);
-        // Trả lỗi 500 để Frontend bắt được ở khối catch
-        res.status(500).json({ error: "Lỗi kết nối máy chủ AI hoặc Hết hạn mức API." });
+        console.error("🚨 Lỗi AI Backend (Groq):", error);
+        res.status(500).json({ error: "Lỗi kết nối máy chủ Groq AI hoặc Hết hạn mức API." });
+    }
+});
+
+// ==========================================
+// 2. API LỊCH SỬ CHAT (XỬ LÝ SIDEBAR)
+// ==========================================
+
+// Lấy danh sách lịch sử
+router.get('/sessions', authMiddleware, async (req, res) => {
+    try {
+        const sessions = await ChatSession.find({ userId: req.user.userId }).sort({ updatedAt: -1 });
+        res.json(sessions.map(s => ({
+            id: s._id,
+            title: s.title || "Tâm sự mới",
+            updatedAt: s.updatedAt
+        })));
+    } catch (error) {
+        console.error("Lỗi lấy sessions:", error);
+        res.status(500).json({ message: "Lỗi server" });
+    }
+});
+
+// Đổi tên đoạn chat
+router.put('/sessions/:id', authMiddleware, async (req, res) => {
+    try {
+        await ChatSession.findByIdAndUpdate(req.params.id, { title: req.body.title });
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ message: "Lỗi server" });
+    }
+});
+
+// Xóa đoạn chat
+router.delete('/sessions/:id', authMiddleware, async (req, res) => {
+    try {
+        await ChatSession.findByIdAndDelete(req.params.id);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ message: "Lỗi server" });
     }
 });
 
