@@ -82,12 +82,13 @@ router.get('/google/callback', async (req, res) => {
             username: name, 
             email: email, 
             password: 'google_oauth_placeholder',
-            avatar: picture, // Lưu ảnh vào database (Nhớ thêm field avatar vào file User.js Model nhé)
+            avatar: picture,
+            // THÊM DÒNG NÀY: Ép một hwid ảo độc nhất cho user Google
+            hwid: `google_${email}`, 
             userContext: '' 
         });
         await user.save();
     } else if (!user.avatar && picture) {
-        // Nếu user cũ chưa có ảnh mà giờ Google có, thì cập nhật ảnh cho họ
         user.avatar = picture;
         await user.save();
     }

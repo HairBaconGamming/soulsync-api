@@ -22,6 +22,11 @@ const UserSchema = new mongoose.Schema({
         text: String, 
         createdAt: { type: Date, default: Date.now } 
     }],
+    hwid: { 
+        type: String, 
+        unique: true, 
+        sparse: true // <--- THÊM DÒNG NÀY: Bỏ qua kiểm tra trùng lặp nếu giá trị là null
+    },
     messageCount: { type: Number, default: 0 },
     createdAt: { type: Date, default: Date.now }
 });
