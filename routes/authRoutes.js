@@ -75,16 +75,24 @@ router.get('/google/callback', async (req, res) => {
     const name = payload.name;
     const picture = payload.picture; // Lấy link ảnh từ Google
 
-    // 3. Tìm trong Database. Nếu chưa có thì tạo tài khoản mới.
+    // 3. XỬ LÝ TRÙNG LẶP & TẠO USER MỚI
     let user = await User.findOne({ email });
     if (!user) {
+        let finalUsername = name;
+        let isNameTaken = await User.findOne({ username: finalUsername });
+        
+        // NẾU TRÙNG TÊN: Lấy phần đầu của email ghép vào (VD: Trương Hoàng Nam (truonghoangnam))
+        if (isNameTaken) {
+            const emailPrefix = email.split('@')[0];
+            finalUsername = `${name} (${emailPrefix})`;
+        }
+
         user = new User({ 
-            username: name, 
+            username: finalUsername, 
             email: email, 
             password: 'google_oauth_placeholder',
             avatar: picture,
-            // THÊM DÒNG NÀY: Ép một hwid ảo độc nhất cho user Google
-            hwid: `google_${email}`, 
+            hwid: `google_${email}`, // Fix triệt để lỗi hwid: null
             userContext: '' 
         });
         await user.save();
@@ -93,10 +101,11 @@ router.get('/google/callback', async (req, res) => {
         await user.save();
     }
 
+    // 4. Tạo JWT Token
     const jwtToken = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
-    // 5. Ném người dùng về Frontend, GỬI KÈM CẢ AVATAR
-    res.redirect(`https://hiencuacau.onrender.com/?token=${jwtToken}&username=${encodeURIComponent(user.username)}&avatar=${encodeURIComponent(user.avatar || '')}`);
+    // 5. Ném người dùng về Frontend, GỬI KÈM CẢ AVATAR VÀ EMAIL
+    res.redirect(`https://hiencuacau.onrender.com/?token=${jwtToken}&username=${encodeURIComponent(user.username)}&avatar=${encodeURIComponent(user.avatar || '')}&email=${encodeURIComponent(user.email)}`);
 
   } catch (error) {
     console.error("Lỗi Google Auth:", error);
