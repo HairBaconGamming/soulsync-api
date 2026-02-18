@@ -118,10 +118,12 @@ ${user.userContext || 'Người dùng mới đến Hiên lần đầu. Hãy đó
 // ==========================================
 router.get('/sessions', authMiddleware, async (req, res) => {
     try {
+        // req.userId bây giờ đã có giá trị từ Middleware bước 1
         const user = await User.findById(req.userId);
         if (!user) return res.status(404).json({ message: "Không tìm thấy người dùng." });
 
-        // Lấy mảng sessions và sắp xếp cái mới nhất lên đầu
+        if (!user.sessions) return res.json([]);
+
         const sortedSessions = user.sessions.sort((a, b) => b.updatedAt - a.updatedAt);
         
         res.json(sortedSessions.map(s => ({
