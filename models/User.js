@@ -8,7 +8,8 @@ const SessionSchema = new mongoose.Schema({
 });
 
 const UserSchema = new mongoose.Schema({
-    username: { type: String, unique: true, required: true },
+    username: { type: String, required: true, unique: true }, // Định danh cứng
+    displayName: { type: String },
     password: { type: String, required: true },
     resetPasswordOtp: { type: String, default: null },
     resetPasswordExpires: { type: Date, default: null },

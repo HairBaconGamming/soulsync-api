@@ -26,6 +26,13 @@ router.post('/register', async (req, res) => {
     try {
         const { username, email, password } = req.body;
 
+        const usernameRegex = /^[a-z][a-z0-9]*$/;
+        if (!usernameRegex.test(username)) {
+            return res.status(400).json({ 
+                error: "Username không hợp lệ: Phải bắt đầu bằng chữ cái, chỉ dùng chữ thường và số, không có khoảng trắng cậu nhé! 🌿" 
+            });
+        }
+
         // Kiểm tra xem Email đã tồn tại chưa
         const existingUser = await User.findOne({ email });
         
@@ -48,7 +55,12 @@ router.post('/register', async (req, res) => {
 
         // Mã hóa mật khẩu và lưu
         const hashedPassword = await bcrypt.hash(password, 10);
-        const newUser = new User({ username, email, password: hashedPassword });
+        const newUser = new User({ 
+            username, 
+            displayName: username, // Mặc định DisplayName giống Username lúc mới tạo
+            email, 
+            password: hashedPassword 
+        });
         
         await newUser.save();
         res.status(201).json({ message: "Tuyệt vời! Cậu đã đăng ký thành công. Giờ thì đăng nhập nhé." });
@@ -136,29 +148,32 @@ router.get('/google/callback', async (req, res) => {
 router.post('/google-setup', async (req, res) => {
     try {
         const { tempToken, username, password } = req.body;
-        
-        // Giải mã token tạm
         const decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
-        if (!decoded.isSetupToken) return res.status(400).json({ error: "Mã xác thực không hợp lệ." });
-
-        // Kiểm tra username trùng
-        const existingUsername = await User.findOne({ username });
-        if (existingUsername) return res.status(400).json({ error: "Tên hiển thị này đã có người dùng." });
-
-        // Lưu vào DB với mật khẩu xịn
+        
         const hashedPassword = await bcrypt.hash(password, 10);
         const newUser = new User({
-            username, email: decoded.email, password: hashedPassword,
-            avatar: decoded.picture, hwid: decoded.hwid
+            username, 
+            email: decoded.email, // Lưu email từ Google
+            password: hashedPassword,
+            avatar: decoded.picture, // Lưu ảnh từ Google
+            hwid: decoded.hwid
         });
         await newUser.save();
 
-        // Tạo Token chính thức
         const token = jwt.sign({ id: newUser._id, userId: newUser._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
-        res.json({ token, user: { id: newUser._id, username: newUser.username, email: newUser.email, avatar: newUser.avatar } });
+
+        // QUAN TRỌNG: Phải trả về đầy đủ Object user
+        res.json({ 
+            token, 
+            user: { 
+                username: newUser.username, 
+                email: newUser.email, 
+                avatar: newUser.avatar 
+            } 
+        });
 
     } catch (error) {
-        res.status(400).json({ error: "Phiên kết nối Google đã hết hạn. Cậu thử đăng nhập lại nhé." });
+        res.status(400).json({ error: "Phiên kết nối Google đã hết hạn." });
     }
 });
 
