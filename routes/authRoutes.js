@@ -11,7 +11,7 @@ const { OAuth2Client } = require('google-auth-library');
 const client = new OAuth2Client(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
-  'http://localhost:5000/api/auth/google/callback' //'https://hiencuacau-api.onrender.com/api/auth/google/callback' // Phải khớp 100% với Google Console
+  'https://hiencuacau-api.onrender.com/api/auth/google/callback' // Phải khớp 100% với Google Console
 );
 
 // ==========================================
