@@ -73,40 +73,39 @@ router.post('/register', async (req, res) => {
 
 router.post('/login', async (req, res) => {
     try {
-        const { email, password } = req.body;
+        // Frontend gửi lên 'identifier' (có thể là email hoặc username)
+        const { identifier, password } = req.body; 
 
-        // Tìm user theo email
-        const user = await User.findOne({ email });
-        if (!user) return res.status(400).json({ error: "Mình không tìm thấy email này trong hệ thống. Cậu gõ đúng chưa?" });
+        // Tìm user theo Email HOẶC Username
+        const user = await User.findOne({ 
+            $or: [{ email: identifier }, { username: identifier }] 
+        });
 
-        // CHẶN NGAY NẾU LÀ TÀI KHOẢN GOOGLE
-        // (Nhận diện qua chuỗi mật khẩu placeholder chúng ta tạo lúc callback)
+        if (!user) return res.status(400).json({ error: "Tài khoản không tồn tại. Cậu kiểm tra lại nhé?" });
+
         if (user.password.includes('google_') && user.password.includes('_placeholder')) {
              return res.status(400).json({ 
-                 error: "Tài khoản này dùng Google để mở cửa. Cậu hãy bấm nút 'Đăng nhập bằng Google' ở bên dưới nhé ✨" 
+                 error: "Tài khoản này dùng Google để mở cửa. Hãy bấm nút 'Đăng nhập bằng Google' nhé ✨" 
              });
         }
 
-        // Nếu là tài khoản thường thì kiểm tra mật khẩu bình thường
         const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) return res.status(400).json({ error: "Mật khẩu chưa đúng rồi, cậu nhớ lại thử xem." });
+        if (!isMatch) return res.status(400).json({ error: "Mật khẩu chưa đúng rồi cậu ơi." });
 
-        // Tạo Token
         const token = jwt.sign({ id: user._id, userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
+        // ✅ FIX: Trả về ĐẦY ĐỦ thông tin bao gồm displayName
         res.json({ 
             token, 
             user: { 
-                id: user._id, 
                 username: user.username, 
+                displayName: user.displayName || user.username,
                 email: user.email, 
                 avatar: user.avatar 
             } 
         });
-
     } catch (error) {
-        console.error("Lỗi đăng nhập:", error);
-        res.status(500).json({ error: "Hệ thống đang bận chút xíu, cậu đợi mình tí nhé." });
+        res.status(500).json({ error: "Lỗi hệ thống." });
     }
 });
 
@@ -128,21 +127,26 @@ router.get('/google/callback', async (req, res) => {
     const googleHwid = `google_${email}`;
 
     let user = await User.findOne({ $or: [{ email: email }, { hwid: googleHwid }] });
-    const frontendUrl = 'https://hiencuacau.onrender.com'; // Sửa thành localhost:5173 nếu test ở máy
+    const frontendUrl = 'https://hiencuacau.onrender.com'; 
 
     if (!user) {
-        // TÀI KHOẢN MỚI: Không lưu vào DB vội! Tạo Token tạm 15 phút.
-        const tempToken = jwt.sign({ email, name, picture, hwid: googleHwid, isSetupToken: true }, process.env.JWT_SECRET, { expiresIn: '15m' });
-        
-        // Đẩy về Frontend kèm cờ ?setup=true
-        const redirectUrl = `${frontendUrl}/?setup=true&tempToken=${tempToken}&email=${encodeURIComponent(email)}&name=${encodeURIComponent(name)}&avatar=${encodeURIComponent(picture)}`;
-        return res.redirect(redirectUrl);
+        const tempToken = jwt.sign({ email, name, picture, hwid: googleHwid }, process.env.JWT_SECRET, { expiresIn: '15m' });
+        // Truyền thêm avatar để setup
+        return res.redirect(`${frontendUrl}/?setup=true&tempToken=${tempToken}&email=${encodeURIComponent(email)}&avatar=${encodeURIComponent(picture)}`);
     } else {
-        // TÀI KHOẢN CŨ: Đăng nhập bình thường
         const jwtToken = jwt.sign({ id: user._id, userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
-        return res.redirect(`${frontendUrl}/?token=${jwtToken}&username=${encodeURIComponent(user.username)}&avatar=${encodeURIComponent(user.avatar || '')}&email=${encodeURIComponent(user.email || '')}`);
+        
+        // ✅ FIX: Phải truyền thêm displayName trên URL để App.jsx nhận được
+        const redirectUrl = `${frontendUrl}/?token=${jwtToken}` +
+                            `&username=${encodeURIComponent(user.username)}` +
+                            `&displayName=${encodeURIComponent(user.displayName || user.username)}` +
+                            `&avatar=${encodeURIComponent(user.avatar || '')}` +
+                            `&email=${encodeURIComponent(user.email || '')}`;
+        return res.redirect(redirectUrl);
     }
-  } catch (error) { res.redirect('https://hiencuacau.onrender.com/?error=google_auth_failed'); }
+  } catch (error) { 
+      res.redirect('https://hiencuacau.onrender.com/?error=google_auth_failed'); 
+  }
 });
 
 router.post('/google-setup', async (req, res) => {
