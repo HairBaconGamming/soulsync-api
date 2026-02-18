@@ -52,6 +52,8 @@ app.use('/api/chat', require('./routes/chatRoutes'));
 // Thêm các phòng ban khác nếu cậu có làm (Ví dụ: Nhật ký, Lọ đom đóm...)
 // app.use('/api/user', require('./routes/userRoutes')); 
 
+app.use('/api', require('./routes/toolRoutes'));
+
 // ==========================================
 // 5. BẮT LỖI TOÀN CỤC (GLOBAL ERROR HANDLER)
 // ==========================================

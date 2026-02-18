@@ -11,7 +11,7 @@ const { OAuth2Client } = require('google-auth-library');
 const client = new OAuth2Client(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
-  'https://hiencuacau-api.onrender.com/api/auth/google/callback' // Phải khớp 100% với Google Console
+  'http://localhost:5000/api/auth/google/callback' //'https://hiencuacau-api.onrender.com/api/auth/google/callback' // Phải khớp 100% với Google Console
 );
 
 // ==========================================
@@ -122,50 +122,64 @@ router.get('/google/callback', async (req, res) => {
     const email = payload.email;
     const name = payload.name;
     const picture = payload.picture; 
+    const googleHwid = `google_${email}`; // Gán sẵn hwid chuẩn
 
-    // B. Kiểm tra xem Email này đã tồn tại trong DB chưa
-    let user = await User.findOne({ email });
+    // B. THUẬT TOÁN TÌM KIẾM MỚI (CHỐNG TRÙNG LẶP E11000)
+    // Tìm kiếm xem có ai sở hữu email này HOẶC hwid này chưa
+    let user = await User.findOne({ 
+        $or: [
+            { email: email }, 
+            { hwid: googleHwid }
+        ] 
+    });
     
+    // Nếu hoàn toàn chưa có ai trong DB
     if (!user) {
-        // --- XỬ LÝ TRÙNG TÊN HIỂN THỊ ---
+        // Xử lý chống trùng Tên hiển thị (Username)
         let finalUsername = name;
         let isNameTaken = await User.findOne({ username: finalUsername });
         
-        // Nếu tên hiển thị từ Google đã có người xài, ghép thêm phần đầu của email vào
         if (isNameTaken) {
             const emailPrefix = email.split('@')[0];
             finalUsername = `${name} (${emailPrefix})`;
         }
 
-        // Tạo tài khoản mới cho người dùng Google
+        // Tạo tài khoản mới 
         user = new User({ 
             username: finalUsername, 
             email: email, 
-            password: `google_${Date.now()}_placeholder`, // User Google không cần mật khẩu thật
+            password: `google_${Date.now()}_placeholder`, 
             avatar: picture,
-            hwid: `google_${email}`, // Fix triệt để lỗi E11000 duplicate key hwid: null
+            hwid: googleHwid,
             userContext: '' 
         });
         await user.save();
 
-    } else if (!user.avatar && picture) {
-        // Nếu user đã tồn tại nhưng chưa có avatar, cập nhật avatar mới từ Google
-        user.avatar = picture;
-        await user.save();
+    } else {
+        // C. NẾU USER ĐÃ TỒN TẠI (DO ĐĂNG NHẬP TRƯỚC ĐÓ)
+        // Kiểm tra xem có cần "vá" lại dữ liệu bị thiếu không (tự chữa lành DB)
+        let isModified = false;
+        
+        if (!user.avatar && picture) { user.avatar = picture; isModified = true; }
+        if (!user.email && email) { user.email = email; isModified = true; }
+        if (!user.hwid) { user.hwid = googleHwid; isModified = true; } // Vá lỗi hwid bị null
+        
+        if (isModified) {
+            await user.save();
+        }
     }
 
-    // C. Tạo JWT Token để duy trì đăng nhập
-    const jwtToken = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    // D. Tạo JWT Token để duy trì đăng nhập
+    const jwtToken = jwt.sign({ id: user._id, userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
-    // D. Đẩy người dùng về lại Frontend kèm theo dữ liệu trên thanh URL
+    // E. Đẩy người dùng về lại Frontend kèm theo dữ liệu trên thanh URL
     const frontendUrl = 'https://hiencuacau.onrender.com';
-    const redirectUrl = `${frontendUrl}/?token=${jwtToken}&username=${encodeURIComponent(user.username)}&avatar=${encodeURIComponent(user.avatar || '')}&email=${encodeURIComponent(user.email)}`;
+    const redirectUrl = `${frontendUrl}/?token=${jwtToken}&username=${encodeURIComponent(user.username)}&avatar=${encodeURIComponent(user.avatar || '')}&email=${encodeURIComponent(user.email || '')}`;
     
     res.redirect(redirectUrl);
 
   } catch (error) {
     console.error("🚨 CHI TIẾT LỖI GOOGLE AUTH:", error);
-    // Nếu sập, ném về Frontend kèm theo tham số báo lỗi để hiển thị Toast mượt mà
     res.redirect('https://hiencuacau.onrender.com/?error=google_auth_failed');
   }
 });

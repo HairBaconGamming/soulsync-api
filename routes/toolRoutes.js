@@ -90,16 +90,20 @@ Hãy phân tích và BẮT BUỘC trả về CHÍNH XÁC định dạng JSON sau
     }
 });
 
+// Thay thế trong backend/routes/toolRoutes.js
 router.post('/tts', auth, async (req, res) => {
     try {
         const tts = new MsEdgeTTS();
         await tts.setMetadata("vi-VN-HoaiMyNeural", OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
         res.setHeader('Content-Type', 'audio/mpeg');
+        
         const { audioStream } = tts.toStream(req.body.text);
-        audioStream.on('data', chunk => res.write(chunk));
-        audioStream.on('close', () => res.end());
-        audioStream.on('error', () => res.end());
-    } catch (error) { if (!res.headersSent) res.status(500).json({ error: "Lỗi TTS" }); }
+        // SỬ DỤNG PIPE để xả thẳng luồng âm thanh siêu tốc về Frontend
+        audioStream.pipe(res); 
+        
+    } catch (error) { 
+        if (!res.headersSent) res.status(500).json({ error: "Lỗi TTS" }); 
+    }
 });
 
 // --- API LỌ ĐOM ĐÓM KÝ ỨC (FIREFLY JAR) ---
