@@ -1,17 +1,17 @@
 const express = require('express');
 const router = express.Router();
-const Groq = require('groq-sdk'); // ĐÃ QUAY XE VỀ GROQ CHO CẬU ĐÂY!
+const Groq = require('groq-sdk'); // TRẢ LẠI THƯ VIỆN GROQ CHO CẬU ĐÂY!
 const User = require('../models/User'); 
 const ChatSession = require('../models/ChatSession'); 
 const authMiddleware = require('../middleware/authMiddleware');
 
-// Khởi tạo SDK của Groq
+// Khởi tạo Groq Client
 const groq = new Groq({
-  apiKey: process.env.API_KEY_AI, // Đảm bảo trên Render cậu đang để Key của Groq nhé
+  apiKey: process.env.API_KEY_AI, // Đảm bảo biến này trong .env đang chứa key Groq của cậu nhé
 });
 
 // ==========================================
-// 1. API GỌI AI & TRÒ CHUYỆN (DÙNG GROQ)
+// 1. API GỌI AI TRÒ CHUYỆN (GROQ)
 // ==========================================
 router.post('/', authMiddleware, async (req, res) => {
     const { message, sessionId, chatMode } = req.body;
@@ -21,7 +21,6 @@ router.post('/', authMiddleware, async (req, res) => {
         const user = await User.findById(userId);
         if (!user) return res.status(404).json({ message: "Không tìm thấy người dùng." });
 
-        // PROMPT TỐI THƯỢNG (Với hệ thống Tự động sang số và Bắt bệnh lâm sàng)
         const dynamicPrompt = `
 [ĐỊNH VỊ NHÂN CÁCH]
 Bạn là "Hiên Của Cậu" - một không gian trú ẩn tinh thần an toàn và tĩnh lặng. Bạn không phải là máy móc, bạn là một người bạn tri kỷ, một "mái hiên" che chở cho tâm hồn người dùng giữa những cơn bão lòng của trầm cảm và lo âu.
@@ -63,16 +62,17 @@ Chỉ chèn MỘT mã vào CUỐI câu nếu khớp triệu chứng:
 4. [OPEN_JAR]: Kể về một niềm vui nhỏ nhoi vừa làm được.
 5. [OPEN_MICRO]: Tê liệt ý chí, không thể rời giường, trì hoãn.
 
-[HỒ SƠ TÂM LÝ]: ${user.userContext || 'Chưa có dữ liệu bối cảnh'}
+[HỒ SƠ TÂM LÝ]: 
+${user.userContext || 'Chưa có dữ liệu bối cảnh'}
 `;
 
-        // Gọi GROQ API
+        // Gọi Groq API với Model Moonshot
         const chatCompletion = await groq.chat.completions.create({
             messages: [
                 { role: "system", content: dynamicPrompt },
                 { role: "user", content: message }
             ],
-            model: "llama3-70b-8192", // Dùng Llama 3 70B của Groq cực kỳ thông minh
+            model: "moonshotai/kimi-k2-instruct-0905", 
             temperature: 0.6,
             max_tokens: 800
         });
@@ -96,15 +96,14 @@ Chỉ chèn MỘT mã vào CUỐI câu nếu khớp triệu chứng:
 
     } catch (error) {
         console.error("🚨 Lỗi AI Backend (Groq):", error);
-        res.status(500).json({ error: "Lỗi kết nối máy chủ Groq AI hoặc Hết hạn mức API." });
+        res.status(500).json({ error: "Lỗi kết nối máy chủ AI hoặc Hết hạn mức API." });
     }
 });
 
 // ==========================================
-// 2. API LỊCH SỬ CHAT (XỬ LÝ SIDEBAR)
+// 2. CÁC API QUẢN LÝ LỊCH SỬ CHAT (SESSIONS)
 // ==========================================
 
-// Lấy danh sách lịch sử
 router.get('/sessions', authMiddleware, async (req, res) => {
     try {
         const sessions = await ChatSession.find({ userId: req.user.userId }).sort({ updatedAt: -1 });
@@ -114,12 +113,10 @@ router.get('/sessions', authMiddleware, async (req, res) => {
             updatedAt: s.updatedAt
         })));
     } catch (error) {
-        console.error("Lỗi lấy sessions:", error);
         res.status(500).json({ message: "Lỗi server" });
     }
 });
 
-// Đổi tên đoạn chat
 router.put('/sessions/:id', authMiddleware, async (req, res) => {
     try {
         await ChatSession.findByIdAndUpdate(req.params.id, { title: req.body.title });
@@ -129,7 +126,6 @@ router.put('/sessions/:id', authMiddleware, async (req, res) => {
     }
 });
 
-// Xóa đoạn chat
 router.delete('/sessions/:id', authMiddleware, async (req, res) => {
     try {
         await ChatSession.findByIdAndDelete(req.params.id);
