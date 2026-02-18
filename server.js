@@ -1,37 +1,76 @@
+require('dotenv').config(); // Tải các biến môi trường từ file .env
 const express = require('express');
-const cors = require('cors');
-require('dotenv').config();
 const mongoose = require('mongoose');
+const cors = require('cors');
 
-// Khởi tạo Express
+// Khởi tạo ứng dụng Express
 const app = express();
-app.use(cors());
-app.use(express.json());
 
-// Kết nối Database
+// ==========================================
+// 1. CẤU HÌNH MIDDLEWARE & CORS
+// ==========================================
+app.use(express.json()); // Cho phép server đọc được dữ liệu JSON
+
+// Cấu hình CORS để Frontend (Render) và Backend có thể nói chuyện với nhau
+app.use(cors({
+    origin: [
+        'https://hiencuacau.onrender.com', // Link Frontend thật trên Render
+        'http://localhost:5173',           // Link Local của Vite để cậu test trên máy
+        'http://localhost:3000'            // Link Local dự phòng
+    ],
+    credentials: true
+}));
+
+// ==========================================
+// 2. KẾT NỐI DATABASE (MONGODB)
+// ==========================================
 mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('🟢 Đã kết nối MongoDB!'))
-    .catch(err => console.error('🔴 Lỗi kết nối MongoDB:', err));
+    .then(() => console.log('🌿 Đã kết nối thành công với kho lưu trữ Hiên Của Cậu (MongoDB)!'))
+    .catch((err) => console.error('🚨 Lỗi kết nối MongoDB:', err));
 
-// --- QUẢN LÝ ROUTES (MODULES GIAO TIẾP VỚI NHAU Ở ĐÂY) ---
-const authRoutes = require('./routes/authRoutes');
-const userRoutes = require('./routes/userRoutes');
-const toolRoutes = require('./routes/toolRoutes');
-const chatRoutes = require('./routes/chatRoutes');
-
-// Gắn các API vào các đường dẫn gốc
-app.use('/api/auth', authRoutes);            // Sẽ xử lý /api/login, /api/register
-app.use('/api/user', userRoutes);       // Sẽ xử lý /api/user/profile...
-app.use('/api', toolRoutes);            // Sẽ xử lý /api/mood, /api/tts...
-app.use('/api/chat', chatRoutes);       // Sẽ xử lý /api/chat/sessions...
-
+// ==========================================
+// 3. ĐƯỜNG DÂY NÓNG GIỮ SERVER LUÔN THỨC (PINGER)
+// ==========================================
+// Route này dùng để UptimeRobot hoặc Frontend gọi vào để giữ server không bị ngủ đông
 app.get('/api/ping', (req, res) => {
-  res.status(200).json({ 
-    status: "ready", 
-    message: "Hiên đã sẵn sàng đón cậu! 🌿",
-    timestamp: new Date()
-  });
+    res.status(200).json({ 
+        status: "ready", 
+        message: "Hiên Của Cậu đã sẵn sàng đón khách! 🌿",
+        timestamp: new Date()
+    });
 });
 
+// ==========================================
+// 4. ĐIỀU PHỐI ĐƯỜNG DẪN (ROUTES)
+// ==========================================
+// Chuyển hướng các yêu cầu Đăng ký/Đăng nhập/Google sang file authRoutes.js
+app.use('/api/auth', require('./routes/authRoutes'));
+
+// Chuyển hướng các yêu cầu Trò chuyện với AI sang file chatRoutes.js
+app.use('/api/chat', require('./routes/chatRoutes'));
+
+// Thêm các phòng ban khác nếu cậu có làm (Ví dụ: Nhật ký, Lọ đom đóm...)
+// app.use('/api/user', require('./routes/userRoutes')); 
+
+// ==========================================
+// 5. BẮT LỖI TOÀN CỤC (GLOBAL ERROR HANDLER)
+// ==========================================
+// Nếu người dùng gọi vào một đường link không tồn tại
+app.use((req, res, next) => {
+    res.status(404).json({ message: "Đường dẫn này không tồn tại trong Hiên Của Cậu." });
+});
+
+// Bắt các lỗi sập ngầm của Server
+app.use((err, req, res, next) => {
+    console.error("🚨 Lỗi Server Nghiêm Trọng:", err.stack);
+    res.status(500).json({ message: "Có lỗi xảy ra ở hệ thống trung tâm. Cậu đợi một lát nhé." });
+});
+
+// ==========================================
+// 6. KHỞI ĐỘNG SERVER
+// ==========================================
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Backend chạy siêu mượt tại port ${PORT}`));
+app.listen(PORT, () => {
+    console.log(`🚀 Hệ thống đang chạy tại Port ${PORT}`);
+    console.log(`👉 Bấm vào đây để test Ping: http://localhost:${PORT}/api/ping`);
+});
