@@ -3,6 +3,14 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { OAuth2Client } = require('google-auth-library');
+// Khởi tạo Google Client với 3 thông số từ file .env
+const client = new OAuth2Client(
+  process.env.GOOGLE_CLIENT_ID,
+  process.env.GOOGLE_CLIENT_SECRET,
+  'https://hiencuacau-api.onrender.com/api/auth/google/callback' // Phải khớp 100% với trên Google Console
+);
+
 
 router.post('/register', async (req, res) => {
     try {
@@ -39,6 +47,60 @@ router.post('/login', async (req, res) => {
         console.error("🔴 LỖI ĐĂNG NHẬP:", e.message);
         res.status(500).send({ error: "Lỗi máy chủ." }); 
     }
+});
+
+// --- API 1: Người dùng bấm nút, Backend chuyển hướng sang trang đăng nhập Google ---
+router.get('/google', (req, res) => {
+  const url = client.generateAuthUrl({
+    access_type: 'offline',
+    scope: ['profile', 'email']
+  });
+  res.redirect(url);
+});
+
+// --- API 2: Google trả kết quả về đây (Link Callback cậu đã điền) ---
+router.get('/google/callback', async (req, res) => {
+  const { code } = req.query;
+  try {
+    // 1. Lấy token từ Google
+    const { tokens } = await client.getToken(code);
+    
+    // 2. Giải mã token để lấy Email, Tên và Avatar
+    const ticket = await client.verifyIdToken({
+        idToken: tokens.id_token,
+        audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    const email = payload.email;
+    const name = payload.name;
+    const picture = payload.picture; // Lấy link ảnh từ Google
+
+    // 3. Tìm trong Database. Nếu chưa có thì tạo tài khoản mới.
+    let user = await User.findOne({ email });
+    if (!user) {
+        user = new User({ 
+            username: name, 
+            email: email, 
+            password: 'google_oauth_placeholder',
+            avatar: picture, // Lưu ảnh vào database (Nhớ thêm field avatar vào file User.js Model nhé)
+            userContext: '' 
+        });
+        await user.save();
+    } else if (!user.avatar && picture) {
+        // Nếu user cũ chưa có ảnh mà giờ Google có, thì cập nhật ảnh cho họ
+        user.avatar = picture;
+        await user.save();
+    }
+
+    const jwtToken = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+
+    // 5. Ném người dùng về Frontend, GỬI KÈM CẢ AVATAR
+    res.redirect(`https://hiencuacau.onrender.com/?token=${jwtToken}&username=${encodeURIComponent(user.username)}&avatar=${encodeURIComponent(user.avatar || '')}`);
+
+  } catch (error) {
+    console.error("Lỗi Google Auth:", error);
+    res.redirect('https://hiencuacau.onrender.com/?error=google_auth_failed');
+  }
 });
 
 module.exports = router;
