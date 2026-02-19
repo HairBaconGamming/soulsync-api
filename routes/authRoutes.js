@@ -78,13 +78,6 @@ router.post('/login', async (req, res) => {
 
     if (!user) return res.status(400).json({ error: "Mình không tìm thấy tài khoản này trong hệ thống. Cậu gõ đúng chưa?" });
 
-    // Chặn nếu là tài khoản Google (Kiểm tra qua hwid hoặc password)
-    if (user.hwid && user.hwid.startsWith('google_')) {
-      return res.status(400).json({ 
-        error: "Tài khoản này dùng Google để mở cửa. Cậu hãy bấm nút 'Đăng nhập bằng Google' ở bên dưới nhé ✨" 
-      });
-    }
-
     // Kiểm tra mật khẩu
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ error: "Mật khẩu chưa đúng rồi, cậu nhớ lại thử xem." });
