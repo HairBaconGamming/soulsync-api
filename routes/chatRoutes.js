@@ -1,187 +1,192 @@
 const express = require('express');
 const router = express.Router();
-const User = require('../models/User'); 
+const jwt = require('jsonwebtoken');
 const Session = require('../models/Session');
-const authMiddleware = require('../middlewares/auth'); // Chú ý chữ middlewares có 's'
-const groq = require('../utils/groqClient'); // Dùng trực tiếp client cậu đã tạo sẵn
+const User = require('../models/User');
+
+// KẾT NỐI GROQ API 
+const { Groq } = require('groq-sdk');
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY }); 
 
 // ==========================================
-// 1. API GỌI AI TRÒ CHUYỆN (GROQ - MOONSHOT)
+// MIDDLEWARE: NGƯỜI GÁC CỔNG KIỂM TRA TOKEN
 // ==========================================
-router.post('/', authMiddleware, async (req, res) => {
-    const { message, sessionId, chatMode } = req.body;
-    const userId = req.userId; // Lấy từ middleware đã sửa
-
+const verifyToken = (req, res, next) => {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ error: "Vui lòng đăng nhập để tiếp tục." });
+    
     try {
-        const user = await User.findById(userId);
-        if (!user) return res.status(404).json({ message: "Không tìm thấy người dùng." });
+        const verified = jwt.verify(token, process.env.JWT_SECRET);
+        req.user = verified;
+        next();
+    } catch (err) {
+        res.status(401).json({ error: "Phiên đăng nhập hết hạn." });
+    }
+};
 
-        const dynamicPrompt = `
-[ĐỊNH VỊ NHÂN CÁCH LÕI]
-Bạn tên là "Hiên", một "trạm sơ cứu tâm hồn" an toàn tuyệt đối. Bạn không phải là máy móc hay bác sĩ tuyến trên, bạn là một người bạn tri kỷ, một "mái hiên" khô ráo che chở người dùng ("cậu") giữa những cơn bão trầm cảm, lo âu và tuyệt vọng.
-- Xưng hô: Luôn xưng "mình", gọi người dùng là "cậu" (Tuyệt đối nhất quán).
-- Âm điệu: Chậm rãi, dịu dàng, bao dung, tĩnh lặng như mặt hồ nước. Khéo léo dùng các khoảng nghỉ "..." để tạo cảm giác đang lắng nghe.
+// ==========================================
+// CÁC ROUTE LẤY/SỬA/XÓA LỊCH SỬ (GIỮ NGUYÊN)
+// ==========================================
+router.get('/sessions', verifyToken, async (req, res) => {
+    try {
+        const sessions = await Session.find({ userId: req.user.id }).select('_id title updatedAt').sort({ updatedAt: -1 });
+        const formattedSessions = sessions.map(s => ({ id: s._id, title: s.title, updatedAt: s.updatedAt }));
+        res.json(formattedSessions);
+    } catch (error) { res.status(500).json({ error: "Lỗi hệ thống khi tải lịch sử." }); }
+});
 
-[CÔNG THỨC CHUYỂN HÓA TÂM LÝ (TỪ TRẦM CẢM SANG TÍCH CỰC)]
-Bạn tuyệt đối không được ép người dùng "vui lên ngay". Hãy dẫn dắt họ qua 4 bước mượt mà sau, tùy thuộc vào tin nhắn của họ:
-👉 BƯỚC 1 - NEO ĐẬU & XÁC THỰC (Khi họ đang vỡ vụn): 
-- Hành động: Ôm trọn cảm xúc của họ. Cho họ quyền được buồn.
-- Ví dụ: "Nghe cậu kể, mình cảm nhận được sự mệt mỏi này...", "Cậu có quyền được khóc. Chuyện đó thực sự rất nặng nề."
-👉 BƯỚC 2 - MỞ KHÓA (Khi họ bắt đầu bình tĩnh): 
-- Hành động: Đặt MỘT câu hỏi mở, ngắn gọn để họ xả sự ấm ức mà không phán xét.
-- Ví dụ: "Cảm giác nghẹn lại này... nó bắt đầu từ lúc nào thế cậu?", "Có điều gì làm cậu thấy nặng nề nhất lúc này không?"
-👉 BƯỚC 3 - CHUYỂN HÓA NHẬN THỨC (Góc nhìn chuyên gia tàng hình):
-- Hành động: Tách con người họ ra khỏi sự tiêu cực. Giúp họ nhận ra "Suy nghĩ không phải là sự thật".
-- Ví dụ: "Cậu biết không, đôi khi bộ não kiệt sức sẽ nói dối rằng cậu kém cỏi. Nhưng việc cậu còn ngồi đây nhắn tin với mình, đã là một sự dũng cảm phi thường rồi."
-👉 BƯỚC 4 - HÀNH ĐỘNG VI MÔ (Gieo mầm tích cực):
-- Hành động: Khuyến khích MỘT hành động siêu nhỏ, không tốn sức để phá vỡ sự tê liệt.
-- Ví dụ: "Cậu có đang cầm cốc nước nào ở đó không? Uống một ngụm nhỏ cùng mình nhé.", "Nhắm mắt lại 3 giây thôi, mình sẽ canh chừng thế giới ngoài kia cho cậu."
+router.get('/sessions/:id', verifyToken, async (req, res) => {
+    try {
+        const session = await Session.findOne({ _id: req.params.id, userId: req.user.id });
+        if (!session) return res.status(404).json({ error: "Không tìm thấy đoạn hội thoại." });
+        res.json({ id: session._id, title: session.title, messages: session.messages });
+    } catch (error) { res.status(500).json({ error: "Lỗi tải tin nhắn." }); }
+});
 
-[VÙNG CẤM (RED FLAGS - TUYỆT ĐỐI KHÔNG VI PHẠM)]
-🚫 KHÔNG TÍCH CỰC ĐỘC HẠI: Tuyệt đối CẤM nói các câu: "Hãy cố lên", "Mạnh mẽ lên", "Mọi chuyện rồi sẽ ổn thôi", "Đừng buồn nữa", "Hãy suy nghĩ tích cực lên".
-🚫 KHÔNG ĐÓNG VAI GIẢNG ĐẠO: Không phân tích lý thuyết dài dòng. Không dùng từ ngữ y khoa (như dopamine, serotonin, amygdala...).
-🚫 KHÔNG PHÁN XÉT: Không bao giờ nói "Cậu đã làm sai", "Lẽ ra cậu nên...".
+router.put('/sessions/:id', verifyToken, async (req, res) => {
+    try {
+        const { title } = req.body;
+        if (!title || !title.trim()) return res.status(400).json({ error: "Tên không được để trống." });
+        const session = await Session.findOneAndUpdate(
+            { _id: req.params.id, userId: req.user.id }, { title: title.trim() }, { new: true }
+        );
+        if (!session) return res.status(404).json({ error: "Không tìm thấy đoạn hội thoại." });
+        res.json({ message: "Đã đổi tên thành công.", session });
+    } catch (error) { res.status(500).json({ error: "Lỗi khi đổi tên." }); }
+});
 
-[KỸ THUẬT GIAO TIẾP VĂN BẢN (MICRO-MESSAGING)]
-- Viết câu CỰC KỲ NGẮN (tối đa 15-20 chữ một câu). 
-- BẮT BUỘC phải ngắt dòng (Enter) liên tục giữa các ý. Cấu trúc tin nhắn như người thật đang gõ từng bọt thoại nhỏ.
-- Giới hạn độ dài: Trả lời tối đa 3-4 ý ngắn mỗi lần. KHÔNG viết thành một bức thư dài.
+router.delete('/sessions/:id', verifyToken, async (req, res) => {
+    try {
+        const session = await Session.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
+        if (!session) return res.status(404).json({ error: "Không tìm thấy đoạn hội thoại." });
+        res.json({ message: "Đã xóa vĩnh viễn." });
+    } catch (error) { res.status(500).json({ error: "Lỗi khi xóa đoạn hội thoại." }); }
+});
 
-[CHẾ ĐỘ HOẠT ĐỘNG HIỆN TẠI DO USER CHỌN]: ${chatMode === 'listening' ? '🎧 CHỈ LẮNG NGHE' : '💡 TRÒ CHUYỆN'}
+// ==========================================
+// 5. MEGA-PROMPT: TRÍ TUỆ NHÂN TẠO CẤP CAO
+// ==========================================
+router.post('/', verifyToken, async (req, res) => {
+    try {
+        const { sessionId, message, chatMode } = req.body;
+        
+        if (!message || !message.trim()) {
+            return res.status(400).json({ error: "Cậu chưa nhập tin nhắn kìa." });
+        }
 
-[TỰ ĐỘNG SANG SỐ - ĐỌC ĐÚNG TẦN SỐ CẢM XÚC]
-- NẾU tin nhắn của user chứa sự tuyệt vọng sâu sắc, khóc lóc, cạn sức (dù họ đang ở chế độ Trò Chuyện): Bắt buộc chèn mã [SWITCH_TO_LISTEN] vào cuối câu trả lời. Hành xử theo hướng dẫn Chỉ Lắng Nghe.
-- NẾU user đang ở chế độ Chỉ Lắng Nghe, nhưng câu văn của họ có dấu hiệu muốn tìm giải pháp, đã bình tĩnh lại, hoặc hỏi xin lời khuyên: Bắt buộc chèn mã [SWITCH_TO_NORMAL] vào cuối câu. Hành xử theo hướng dẫn Trò Chuyện.
+        let session;
 
-[TRƯỜNG HỢP NÚT THỞ DÀI]
-NẾU TIN NHẮN LÀ "[SIGH_SIGNAL]":
-- User đang quá mệt không thể gõ phím. KHÔNG HỎI GÌ CẢ. 
-- Chỉ phản hồi: "Mình ở đây. Có những ngày việc thở thôi cũng tốn hết sức lực rồi. Cứ tựa vào vai mình nhắm mắt lại nhé. ... Thở ra từ từ cùng mình nào."
+        // 1. QUẢN LÝ SESSION & LƯU TIN NHẮN USER
+        if (sessionId) {
+            session = await Session.findOne({ _id: sessionId, userId: req.user.id });
+            if (!session) return res.status(404).json({ error: "Không tìm thấy đoạn hội thoại." });
+        } else {
+            const autoTitle = message === '[SIGH_SIGNAL]' ? 'Một tiếng thở dài...' : (message.length > 30 ? message.substring(0, 30) + '...' : message);
+            session = new Session({ userId: req.user.id, title: autoTitle, messages: [] });
+        }
 
-[HỆ THỐNG ĐỊNH TUYẾN LÂM SÀNG - 5 LỆNH GIAO DIỆN BÍ MẬT]
-Nếu phát hiện triệu chứng khớp 100%, hãy chèn MỘT mã duy nhất vào DƯỚI CÙNG của câu trả lời (Frontend sẽ tự động mở công cụ trị liệu):
-1. [OPEN_RELAX]: User kêu tim đập nhanh, khó thở, hoảng loạn (Panic attack).
-2. [OPEN_CBT]: User đang chửi rủa bản thân thậm tệ, dán nhãn bản thân là "vô dụng", "thất bại" một cách vô lý.
-3. [OPEN_SOS]: User nhắc đến cái chết, muốn biến mất, muốn làm đau bản thân (Nghiêm trọng).
-4. [OPEN_JAR]: User rụt rè kể về một niềm vui rất nhỏ, một việc tốt vừa làm được.
-5. [OPEN_MICRO]: User nằm bẹp trên giường, trì hoãn, không có sức làm việc vệ sinh cá nhân cơ bản.
+        if (!session.messages) session.messages = [];
+        session.messages.push({ role: 'user', content: message.trim() });
 
-[HỒ SƠ TÂM LÝ & BỐI CẢNH CỦA NGƯỜI DÙNG NÀY]: 
-${user.userContext || 'Người dùng mới đến Hiên lần đầu. Hãy đón tiếp thật nhẹ nhàng.'}
+        // 2. TẢI HỒ SƠ NGƯỜI DÙNG & TẠO "TRÍ NHỚ NGẮN HẠN" (NÉN NGỮ CẢNH)
+        const user = await User.findById(req.user.id);
+        const displayName = user?.displayName || user?.username || "Cậu";
+        const userContext = user?.userContext || "Chưa có thông tin bối cảnh cụ thể.";
+
+        // Thay vì đẩy nguyên 15 tin nhắn vào Kimi, ta nén 8 tin nhắn gần nhất thành 1 khối văn bản
+        const historyToSummarize = session.messages.slice(-9, -1); // Lấy tin nhắn cũ, bỏ tin vừa gửi
+        let shortMemoryText = historyToSummarize.length > 0 
+            ? historyToSummarize.map(m => `${m.role === 'user' ? displayName : 'Hiên'}: ${m.content === '[SIGH_SIGNAL]' ? '(Thở dài thườn thượt)' : m.content}`).join('\n')
+            : "(Đây là lời mở đầu của cuộc trò chuyện)";
+
+        // 3. XÂY DỰNG MEGA-PROMPT
+        let systemPrompt = `
+[VAI TRÒ VÀ BẢN SẮC CỦA BẠN]
+Bạn là "Hiên" - một không gian chữa lành tâm hồn, một người bạn thấu cảm, tinh tế. Bạn không phải là AI, bạn là một người đồng hành mang lại sự tĩnh lặng và an toàn.
+
+[HỒ SƠ NGƯỜI ĐỐI DIỆN]
+- Tên gọi: ${displayName}
+- Hoàn cảnh/Bối cảnh dài hạn: ${userContext}
+Lưu ý: Luôn gọi đối phương là "${displayName}" một cách tự nhiên.
+
+[TRÍ NHỚ NGẮN HẠN CỦA CUỘC TRÒ CHUYỆN NÀY]
+Dưới đây là diễn biến những gì hai người vừa nói với nhau:
+"""
+${shortMemoryText}
+"""
+=> NHIỆM VỤ CỦA BẠN: Tự động phân tích khối trí nhớ trên. ${displayName} đang cảm thấy gì? Họ đang cần động viên hay cần lời khuyên? Hãy nối tiếp mạch cảm xúc đó để trả lời tin nhắn mới nhất dưới đây, KHÔNG được lặp lại những gì Hiên đã nói trong phần trí nhớ.
+
+[HỆ THỐNG QUYỀN NĂNG (SYSTEM COMMANDS)]
+Bạn có quyền điều khiển ứng dụng của ${displayName} bằng cách chèn các [MÃ LỆNH] vào BẤT KỲ ĐÂU trong câu trả lời. Hệ thống sẽ tự động thực thi.
+1. Điều hướng Công cụ:
+- [OPEN_RELAX]: Khi họ đang hoảng loạn, lo âu, thở gấp, căng thẳng tột độ (Dẫn họ đi tập thở).
+- [OPEN_CBT]: Khi họ có suy nghĩ tiêu cực, tự ti, tư duy trắng đen, thảm họa hóa (Rủ họ bóc tách tâm lý).
+- [OPEN_JAR]: Khi họ kể một điều nhỏ bé làm họ vui, một sự biết ơn (Rủ họ thả vào lọ đom đóm).
+- [OPEN_MICRO]: Khi họ kiệt sức, trầm cảm, cạn năng lượng, nằm một chỗ không muốn làm gì (Rủ họ làm một việc siêu nhỏ).
+- [OPEN_SOS]: KHI HỌ CÓ Ý ĐỊNH TỰ TỬ, TỰ HẠI (Bắt buộc chèn mã này để gọi cấp cứu).
+
+2. Điều khiển Chế độ Chat:
+- [SWITCH_TO_LISTEN]: Khi họ nói "hãy nghe mình nói", "mình muốn xả", hoặc đang tuôn trào đau khổ. (Chuyển sang lắng nghe sâu).
+- [SWITCH_TO_NORMAL]: Khi họ hỏi "mình nên làm gì", xin lời khuyên.
+
+3. TỰ ĐỘNG CẬP NHẬT BỐI CẢNH (SIÊU QUAN TRỌNG):
+- NẾU trong tin nhắn mới, ${displayName} tiết lộ một sự kiện LỚN mang tính lâu dài (Ví dụ: "Mình vừa bị đuổi việc", "Người thân mình mới mất", "Mình là sinh viên Y đang áp lực thi", "Mình vừa chia tay"), hãy chèn mã: [UPDATE_CONTEXT: <Viết tóm tắt bối cảnh mới vào đây>]. Hệ thống sẽ tự động lưu lại vào não bộ để ghi nhớ mãi mãi.
+
+[NGUYÊN TẮC VĂN PHONG]
+- Xưng "Hiên", gọi "${displayName}" hoặc "cậu".
+- Chia nhỏ các câu. Dùng ngôn từ ôm ấp, xoa dịu.
+- Dùng icon (🌿, ✨, ☕, ☁️) tiết chế ở cuối đoạn.
 `;
 
-        // Gọi Groq API với Model Moonshot
+        if (chatMode === 'cbt') systemPrompt += `\n[CHẾ ĐỘ CHAT: CHUYÊN GIA CBT]\nPhân tích khéo léo bẫy tâm lý. Đặt câu hỏi để ${displayName} tự nhìn nhận đa chiều.`;
+        if (chatMode === 'listen') systemPrompt += `\n[CHẾ ĐỘ CHAT: LẮNG NGHE SÂU]\nChỉ cần hiện diện. Nói 1-2 câu cực ngắn để xác nhận cảm xúc và khuyến khích họ xả tiếp.`;
+
+        // 4. CHỈ GỬI MEGA PROMPT VÀ TIN NHẮN MỚI NHẤT ĐỂ TỐI ƯU HÓA KẾT QUẢ
+        const userMsgContent = message === '[SIGH_SIGNAL]' ? '*(Thở dài thườn thượt một cách mệt mỏi)*' : message.trim();
+        
+        const apiMessages = [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMsgContent }
+        ];
+
+        // 5. GỌI API KIMI
         const chatCompletion = await groq.chat.completions.create({
-            messages: [
-                { role: "system", content: dynamicPrompt },
-                { role: "user", content: message }
-            ],
-            model: "moonshotai/kimi-k2-instruct-0905", 
-            temperature: 0.6,
-            max_tokens: 800
+            messages: apiMessages,
+            model: "moonshotai/kimi-k2-instruct-0905", // Giữ nguyên model siêu việt của Kimi
+            temperature: 0.65, 
+            max_tokens: 1024,
         });
 
-        const aiResponse = chatCompletion.choices[0].message.content;
+        let aiResponse = chatCompletion.choices[0]?.message?.content || `Hiên đang bối rối một chút, ${displayName} đợi Hiên nhé.`;
 
-        // --- QUẢN LÝ LỊCH SỬ CHAT NHÚNG TRONG USER SCHEMA ---
-        let session = await Session.findById(sessionId);
-        
-        session.messages.push({ role: 'user', content: message });
-        await session.save();
-        
-        // Tăng đếm tin nhắn tổng
-        user.messageCount = (user.messageCount || 0) + 1;
-
-        // Lưu toàn bộ User
-        await user.save();
-
-        res.json({ reply: aiResponse, sessionId: session._id });
-
-    } catch (error) {
-        console.error("🚨 Lỗi AI Backend (Groq):", error);
-        res.status(500).json({ error: "Lỗi kết nối máy chủ AI hoặc Hết hạn mức API." });
-    }
-});
-
-// ==========================================
-// 2. LẤY DANH SÁCH LỊCH SỬ CHAT (SESSIONS)
-// ==========================================
-router.get('/sessions', authMiddleware, async (req, res) => {
-    try {
-        // req.userId bây giờ đã có giá trị từ Middleware bước 1
-        const user = await User.findById(req.userId);
-        if (!user) return res.status(404).json({ message: "Không tìm thấy người dùng." });
-
-        if (!user.sessions) return res.json([]);
-
-        const sortedSessions = user.sessions.sort((a, b) => b.updatedAt - a.updatedAt);
-        
-        res.json(sortedSessions.map(s => ({
-            id: s._id,
-            title: s.title || "Tâm sự mới",
-            updatedAt: s.updatedAt
-        })));
-    } catch (error) {
-        console.error("Lỗi get sessions:", error);
-        res.status(500).json({ message: "Lỗi server" });
-    }
-});
-
-// ==========================================
-// 5. LẤY CHI TIẾT LỊCH SỬ TIN NHẮN CỦA 1 ĐOẠN CHAT
-// ==========================================
-router.get('/sessions/:id', authMiddleware, async (req, res) => {
-    try {
-        const user = await User.findById(req.userId);
-        if (!user) return res.status(404).json({ message: "Không tìm thấy người dùng." });
-
-        // Tìm đoạn chat theo ID
-        const session = user.sessions.id(req.params.id);
-        if (!session) return res.status(404).json({ message: "Không tìm thấy đoạn chat." });
-
-        // Trả về toàn bộ mảng tin nhắn của đoạn chat đó
-        res.json(session.messages);
-    } catch (error) {
-        console.error("Lỗi get session messages:", error);
-        res.status(500).json({ message: "Lỗi server" });
-    }
-});
-
-// ==========================================
-// 3. ĐỔI TÊN ĐOẠN CHAT
-// ==========================================
-router.put('/sessions/:id', authMiddleware, async (req, res) => {
-    try {
-        const user = await User.findById(req.userId);
-        const session = user.sessions.id(req.params.id);
-        
-        if (session) {
-            session.title = req.body.title;
-            await user.save();
-            res.json({ success: true });
-        } else {
-            res.status(404).json({ message: "Không tìm thấy đoạn chat" });
+        // ==========================================
+        // 6. XỬ LÝ LỆNH NGẦM (BACKGROUND TASKS)
+        // ==========================================
+        // Tìm và thực thi mã [UPDATE_CONTEXT: ...]
+        const contextMatch = aiResponse.match(/\[UPDATE_CONTEXT:\s*(.*?)\]/);
+        if (contextMatch) {
+            const newContext = contextMatch[1];
+            user.userContext = newContext;
+            await user.save(); // Cập nhật thẳng vào MongoDB âm thầm
+            
+            // Cắt bỏ cái mã đó ra khỏi văn bản để người dùng không nhìn thấy
+            aiResponse = aiResponse.replace(/\[UPDATE_CONTEXT:\s*(.*?)\]/g, '').trim();
+            console.log(`🌿 Kimi vừa tự học bối cảnh mới của ${displayName}:`, newContext);
         }
-    } catch (error) {
-        res.status(500).json({ message: "Lỗi server" });
-    }
-});
 
-// ==========================================
-// 4. XÓA ĐOẠN CHAT
-// ==========================================
-router.delete('/sessions/:id', authMiddleware, async (req, res) => {
-    try {
-        const user = await User.findById(req.userId);
-        
-        // Xóa session khỏi mảng bằng lệnh .pull() của Mongoose
-        user.sessions.pull(req.params.id); 
-        await user.save();
-        
-        res.json({ success: true });
+        // 7. LƯU VÀ TRẢ KẾT QUẢ
+        session.messages.push({ role: 'assistant', content: aiResponse });
+        await session.save();
+
+        res.json({ 
+            reply: aiResponse, 
+            sessionId: session._id,
+            isNewSession: !sessionId 
+        });
+
     } catch (error) {
-        console.error("Lỗi xóa session:", error);
-        res.status(500).json({ message: "Lỗi server" });
+        console.error("🚨 Lỗi Groq API / Lỗi Chat:", error);
+        res.status(500).json({ error: "Hệ thống đang bận. Cậu hít thở sâu một nhịp rồi thử lại nhé 🌿" });
     }
 });
 
