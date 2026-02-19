@@ -1,31 +1,59 @@
 const express = require('express');
 const router = express.Router();
-const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-const auth = require('../middlewares/auth');
 
-router.get('/profile', auth, async (req, res) => {
+// Middleware: Người gác cổng kiểm tra Token
+const verifyToken = (req, res, next) => {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ error: "Vui lòng đăng nhập để tiếp tục." });
+    
     try {
-        const user = await User.findById(req.userId);
-        res.json({ username: user.username, messageCount: user.messageCount, moodCount: user.moodHistory.length, createdAt: user.createdAt });
-    } catch (e) { res.status(500).send({ error: "Lỗi tải hồ sơ." }); }
+        const verified = jwt.verify(token, process.env.JWT_SECRET);
+        req.user = verified; // Lưu id vào req để dùng cho các hàm sau
+        next();
+    } catch (err) {
+        res.status(401).json({ error: "Phiên đăng nhập hết hạn." });
+    }
+};
+
+// 1. LẤY TOÀN BỘ THÔNG TIN USER (Bao gồm cả Hồ sơ tâm lý)
+router.get('/profile', verifyToken, async (req, res) => {
+    try {
+        // Tìm user, nhưng KHÔNG trả về mật khẩu để bảo mật
+        const user = await User.findById(req.user.id).select('-password -resetPasswordOtp -resetPasswordExpires');
+        if (!user) return res.status(404).json({ error: "Không tìm thấy người dùng." });
+        
+        res.json(user);
+    } catch (error) {
+        res.status(500).json({ error: "Lỗi hệ thống khi tải hồ sơ." });
+    }
 });
 
-router.put('/password', auth, async (req, res) => {
+// 2. CẬP NHẬT HỒ SƠ (DisplayName & UserContext)
+router.put('/profile', verifyToken, async (req, res) => {
     try {
-        const user = await User.findById(req.userId);
-        if (!await bcrypt.compare(req.body.oldPassword, user.password)) return res.status(400).send({ error: "Mật khẩu cũ không đúng." });
-        user.password = await bcrypt.hash(req.body.newPassword, 8);
-        await user.save(); res.json({ success: true, message: "Đổi mật khẩu thành công!" });
-    } catch (e) { res.status(500).send({ error: "Lỗi đổi mật khẩu." }); }
-});
+        const { displayName, userContext } = req.body;
+        const user = await User.findById(req.user.id);
+        
+        if (!user) return res.status(404).json({ error: "Không tìm thấy người dùng." });
 
-router.delete('/reset-data', auth, async (req, res) => {
-    try {
-        const user = await User.findById(req.userId);
-        user.sessions = []; user.userContext = "Người dùng mới, chưa có thông tin."; user.messageCount = 0;
-        await user.save(); res.json({ success: true });
-    } catch (e) { res.status(500).send({ error: "Lỗi reset dữ liệu." }); }
+        // Chỉ cập nhật những trường được gửi lên
+        if (displayName !== undefined) user.displayName = displayName;
+        if (userContext !== undefined) user.userContext = userContext;
+
+        await user.save();
+        
+        res.json({ 
+            message: "Đã lưu thông tin của cậu 🌿", 
+            user: { 
+                displayName: user.displayName, 
+                userContext: user.userContext 
+            } 
+        });
+    } catch (error) {
+        res.status(500).json({ error: "Lỗi hệ thống khi lưu hồ sơ." });
+    }
 });
 
 module.exports = router;

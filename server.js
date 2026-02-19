@@ -49,6 +49,9 @@ app.use('/api/auth', require('./routes/authRoutes'));
 // Chuyển hướng các yêu cầu Trò chuyện với AI sang file chatRoutes.js
 app.use('/api/chat', require('./routes/chatRoutes'));
 
+const userRoutes = require('./routes/userRoutes');
+app.use('/api/user', userRoutes);
+
 // Thêm các phòng ban khác nếu cậu có làm (Ví dụ: Nhật ký, Lọ đom đóm...)
 // app.use('/api/user', require('./routes/userRoutes')); 
 
