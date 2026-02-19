@@ -15,21 +15,22 @@ const client = new OAuth2Client(
   'https://hiencuacau-api.onrender.com/api/auth/google/callback' 
 );
 
-// Cấu hình trạm gửi Email
+// Cấu hình trạm gửi Email vượt tường lửa Render
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
-  port: 465,
-  secure: true,
+  port: 587, // 👈 ĐỔI TỪ 465 SANG 587
+  secure: false, // 👈 BẮT BUỘC ĐỂ FALSE KHI DÙNG CỔNG 587 (Hệ thống sẽ tự động upgrade lên TLS)
   auth: { 
     user: process.env.EMAIL_USER, 
     pass: process.env.EMAIL_PASS 
   },
-  // BẮT BUỘC THÊM ĐOẠN NÀY ĐỂ ÉP CHỈ DÙNG IPV4
-  family: 4, 
+  family: 4, // Ép dùng IPv4
   tls: {
-    // Bỏ qua lỗi chứng chỉ SSL môi trường Dev/Render (nếu có)
     rejectUnauthorized: false
-  }
+  },
+  // Thêm 2 dòng này để Render in ra log chi tiết nếu vẫn bị chặn
+  debug: true,
+  logger: true
 });
 
 // ==========================================
