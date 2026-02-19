@@ -142,4 +142,17 @@ router.post('/microwins', auth, async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Lỗi cập nhật" }); }
 });
 
+// --- API ĐỐT NĂNG LƯỢNG (CHIÊU CUỐI SOS) ---
+router.post('/microwins/consume', auth, async (req, res) => {
+    try {
+        const user = await User.findById(req.userId);
+        // Đưa năng lượng về mốc 50 (Giữ lại thể chất của cây, chỉ đốt phần Hào quang)
+        if (user.microWinsCount > 50) {
+            user.microWinsCount = 50;
+            await user.save();
+        }
+        res.json({ count: user.microWinsCount });
+    } catch (e) { res.status(500).json({ error: "Lỗi giải phóng năng lượng" }); }
+});
+
 module.exports = router;
