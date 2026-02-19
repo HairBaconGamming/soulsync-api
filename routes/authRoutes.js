@@ -6,6 +6,8 @@ const { OAuth2Client } = require('google-auth-library');
 const nodemailer = require('nodemailer');
 const bcrypt = require('bcryptjs');
 
+require('dns').setDefaultResultOrder('ipv4first');
+
 // ==========================================
 // CẤU HÌNH GOOGLE OAUTH CLIENT
 // ==========================================
@@ -17,8 +19,13 @@ const client = new OAuth2Client(
 
 // Cấu hình trạm gửi Email
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+  host: 'smtp.gmail.com',
+  port: 465,
+  secure: true, // Sử dụng SSL/TLS
+  auth: { 
+    user: process.env.EMAIL_USER, 
+    pass: process.env.EMAIL_PASS 
+  }
 });
 
 // ==========================================
