@@ -6,8 +6,6 @@ const { OAuth2Client } = require('google-auth-library');
 const nodemailer = require('nodemailer');
 const bcrypt = require('bcryptjs');
 
-require('dns').setDefaultResultOrder('ipv4first');
-
 // ==========================================
 // CẤU HÌNH GOOGLE OAUTH CLIENT
 // ==========================================
@@ -21,10 +19,16 @@ const client = new OAuth2Client(
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 465,
-  secure: true, // Sử dụng SSL/TLS
+  secure: true,
   auth: { 
     user: process.env.EMAIL_USER, 
     pass: process.env.EMAIL_PASS 
+  },
+  // BẮT BUỘC THÊM ĐOẠN NÀY ĐỂ ÉP CHỈ DÙNG IPV4
+  family: 4, 
+  tls: {
+    // Bỏ qua lỗi chứng chỉ SSL môi trường Dev/Render (nếu có)
+    rejectUnauthorized: false
   }
 });
 
