@@ -1,5 +1,4 @@
 require('dotenv').config(); // Tải các biến môi trường từ file .env
-require('dns').setDefaultResultOrder('ipv4first');
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');

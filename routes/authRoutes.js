@@ -3,7 +3,6 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 const User = require('../models/User'); // Đảm bảo đường dẫn này đúng
 const { OAuth2Client } = require('google-auth-library');
-const nodemailer = require('nodemailer');
 const bcrypt = require('bcryptjs');
 
 // ==========================================
@@ -14,24 +13,6 @@ const client = new OAuth2Client(
   process.env.GOOGLE_CLIENT_SECRET,
   'https://hiencuacau-api.onrender.com/api/auth/google/callback' 
 );
-
-// Cấu hình trạm gửi Email vượt tường lửa Render
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587, // 👈 ĐỔI TỪ 465 SANG 587
-  secure: false, // 👈 BẮT BUỘC ĐỂ FALSE KHI DÙNG CỔNG 587 (Hệ thống sẽ tự động upgrade lên TLS)
-  auth: { 
-    user: process.env.EMAIL_USER, 
-    pass: process.env.EMAIL_PASS 
-  },
-  family: 4, // Ép dùng IPv4
-  tls: {
-    rejectUnauthorized: false
-  },
-  // Thêm 2 dòng này để Render in ra log chi tiết nếu vẫn bị chặn
-  debug: true,
-  logger: true
-});
 
 // ==========================================
 // 1. ĐĂNG KÝ TÀI KHOẢN (REGISTER)
@@ -232,7 +213,7 @@ router.post('/google-setup', async (req, res) => {
 });
 
 // ==========================================
-// 5. QUÊN MẬT KHẨU (GỬI OTP)
+// 5. QUÊN MẬT KHẨU (GỬI OTP QUA MAILERSEND API)
 // ==========================================
 router.post('/forgot-password', async (req, res) => {
   try {
@@ -249,11 +230,16 @@ router.post('/forgot-password', async (req, res) => {
     user.resetPasswordExpires = Date.now() + 3 * 60 * 1000; 
     await user.save();
 
-    // Gửi Email
-    const mailOptions = {
-      from: `"Hiên Của Cậu" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: '🌿 Mã khôi phục mật khẩu - Hiên Của Cậu',
+    // 🚀 THIẾT LẬP GÓI TIN EMAIL THEO CHUẨN MAILERSEND
+    const mailerSendPayload = {
+      from: {
+        email: process.env.MAILERSEND_FROM_EMAIL, // Lấy từ Render Env (Ví dụ: MS_123@trial-abc.mlsender.net)
+        name: "Hiên Của Cậu"
+      },
+      to: [
+        { email: email }
+      ],
+      subject: "🌿 Mã khôi phục mật khẩu - Hiên Của Cậu",
       html: `<div style="font-family: sans-serif; text-align: center; padding: 20px;">
                <h2>Xin chào ${user.displayName || user.username},</h2>
                <p>Cậu vừa yêu cầu đặt lại mật khẩu. Đây là mã xác nhận của cậu, mã này sẽ <b>hết hạn trong 3 phút</b>:</p>
@@ -262,12 +248,31 @@ router.post('/forgot-password', async (req, res) => {
              </div>`
     };
 
-    await transporter.sendMail(mailOptions);
-    res.json({ message: "Mã xác nhận đã được gửi đến email của cậu!" });
+    // 🚀 BẮN API QUA CỔNG HTTPS (Không bị Render chặn)
+    const response = await fetch('https://api.mailersend.com/v1/email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest', // MailerSend yêu cầu header này
+        'Authorization': `Bearer ${process.env.MAILERSEND_API_KEY}`
+      },
+      body: JSON.stringify(mailerSendPayload)
+    });
+
+    // Xử lý nếu MailerSend từ chối
+    if (!response.ok) {
+        const errData = await response.json();
+        console.error("Lỗi từ MailerSend:", errData);
+        // Trả về lỗi chi tiết để dễ debug trên Render log
+        return res.status(500).json({ error: "Lỗi kết nối trạm MailerSend. Cậu thử lại nhé." });
+    }
+
+    // Thành công (MailerSend thường trả về status 202 Accepted)
+    res.json({ message: "Mã OTP đã bay qua tường lửa đến email của cậu!" });
 
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Lỗi hệ thống gửi mail. Cậu thử lại sau nhé." });
+    console.error("Lỗi gửi mail API:", error);
+    res.status(500).json({ error: "Lỗi hệ thống nội bộ. Cậu thử lại sau nhé." });
   }
 });
 
