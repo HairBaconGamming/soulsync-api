@@ -25,7 +25,17 @@ app.use(cors({
 // 2. KẾT NỐI DATABASE (MONGODB)
 // ==========================================
 mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('🌿 Đã kết nối thành công với kho lưu trữ Hiên Của Cậu (MongoDB)!'))
+    .then(async () => {
+        console.log('🌿 Đã kết nối thành công với kho lưu trữ Hiên Của Cậu (MongoDB)!');
+        
+        // 🚀 TIÊM THUỐC GIẢI: Ra lệnh xóa cái index cũ đang gây lỗi
+        try {
+            await mongoose.connection.collection('sessions').dropIndex('sessionId_1');
+            console.log('✨ Đã dọn dẹp thành công tàn dư sessionId_1 cũ!');
+        } catch (e) {
+            // Nếu nó báo lỗi thì tức là index đã được xóa rồi, không sao cả
+        }
+    })
     .catch((err) => console.error('🚨 Lỗi kết nối MongoDB:', err));
 
 // ==========================================

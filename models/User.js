@@ -19,33 +19,23 @@ const userSchema = new mongoose.Schema({
     resetPasswordOtp: { type: String, default: null },
     resetPasswordExpires: { type: Date, default: null },
 
-    // 6. HỒ SƠ TÂM LÝ (Dành cho AI hiểu ngữ cảnh người dùng)
+    // 6. HỒ SƠ TÂM LÝ & TRÍ NHỚ DÀI HẠN (CỐT LÕI CỦA AI)
     userContext: { 
         type: String, 
-        default: "Người dùng mới, chưa có thông tin. Hãy chia sẻ một chút về cậu nhé..." 
+        default: "Người dùng mới, chưa có thông tin bối cảnh cụ thể." 
+    },
+    
+    // ĐÂY LÀ VÙNG TRÍ NHỚ MỚI CỦA CẤP ĐỘ 1:
+    // Nơi AI tự động đúc kết và nhét các sự kiện quan trọng vào.
+    coreMemories: {
+        type: [String],
+        default: []
     },
 
-    // ==========================================
-    // 7. DỮ LIỆU CÁC CÔNG CỤ TRỊ LIỆU (THÊM MỚI Ở ĐÂY)
-    // ==========================================
-    
-    // Nhật ký cảm xúc
-    moodHistory: { 
-        type: Array, 
-        default: [] 
-    },
-    
-    // Lọ đom đóm (Ký ức)
-    fireflies: { 
-        type: Array, 
-        default: [] 
-    },
-    
-    // Năng lượng Vi mô (Micro-wins)
-    microWinsCount: { 
-        type: Number, 
-        default: 0 
-    }
+    // 7. DỮ LIỆU CÁC CÔNG CỤ TRỊ LIỆU
+    moodHistory: { type: Array, default: [] },
+    fireflies: { type: Array, default: [] },
+    microWinsCount: { type: Number, default: 0 }
 
 }, { 
     timestamps: true 
