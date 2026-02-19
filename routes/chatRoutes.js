@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User'); 
+const Session = require('../models/Session');
 const authMiddleware = require('../middlewares/auth'); // Chú ý chữ middlewares có 's'
 const groq = require('../utils/groqClient'); // Dùng trực tiếp client cậu đã tạo sẵn
 
@@ -83,21 +84,10 @@ ${user.userContext || 'Người dùng mới đến Hiên lần đầu. Hãy đó
         const aiResponse = chatCompletion.choices[0].message.content;
 
         // --- QUẢN LÝ LỊCH SỬ CHAT NHÚNG TRONG USER SCHEMA ---
-        let session;
-        if (sessionId) {
-            session = user.sessions.id(sessionId); // Tìm session trong mảng của User
-        }
+        let session = await Session.findById(sessionId);
         
-        // Nếu không có session cũ, tạo một session mới trong mảng
-        if (!session) {
-            user.sessions.push({ title: "Tâm sự mới", messages: [] });
-            session = user.sessions[user.sessions.length - 1]; // Lấy cái vừa tạo
-        }
-
-        // Lưu tin nhắn vào session
-        session.messages.push({ sender: 'user', text: message });
-        session.messages.push({ sender: 'ai', text: aiResponse });
-        session.updatedAt = Date.now();
+        session.messages.push({ role: 'user', content: message });
+        await session.save();
         
         // Tăng đếm tin nhắn tổng
         user.messageCount = (user.messageCount || 0) + 1;
