@@ -1,37 +1,60 @@
 const mongoose = require('mongoose');
 
-const SessionSchema = new mongoose.Schema({
-    title: { type: String, default: "Cuộc trò chuyện mới" },
-    messages: { type: Array, default: [] },
-    updatedAt: { type: Date, default: Date.now },
-    isPinned: { type: Boolean, default: false }
-});
+const userSchema = new mongoose.Schema({
+    // 1. ĐỊNH DANH CỐ ĐỊNH (Không thể thay đổi, dùng để hệ thống nhận diện)
+    username: { 
+        type: String, 
+        required: true, 
+        unique: true,
+        lowercase: true,
+        trim: true
+    },
+    
+    // 2. TÊN HIỂN THỊ (Người dùng có thể tự do thay đổi)
+    displayName: { 
+        type: String,
+        trim: true
+    },
 
-const UserSchema = new mongoose.Schema({
-    username: { type: String, required: true, unique: true }, // Định danh cứng
-    displayName: { type: String },
-    password: { type: String, required: true },
-    resetPasswordOtp: { type: String, default: null },
-    resetPasswordExpires: { type: Date, default: null },
-    userContext: { type: String, default: "Người dùng mới, chưa có thông tin." }, 
-    sessions: [SessionSchema], 
-    moodHistory: [{ 
-        date: String, 
-        mood: String,
-        note: { type: String, default: "" } // THÊM DÒNG NÀY: Lưu ghi chú nhật ký
-    }],
-    microWinsCount: { type: Number, default: 0 },
-    fireflies: [{ // THÊM DÒNG NÀY: Lưu ký ức đom đóm
-        text: String, 
-        createdAt: { type: Date, default: Date.now } 
-    }],
+    // 3. THÔNG TIN CƠ BẢN
+    email: { 
+        type: String, 
+        required: true,
+        trim: true
+    },
+    password: { 
+        type: String, 
+        required: true 
+    },
+    avatar: { 
+        type: String, 
+        default: "" 
+    },
+
+    // 4. NHẬN DIỆN GOOGLE OAUTH
     hwid: { 
         type: String, 
-        unique: true, 
-        sparse: true // <--- THÊM DÒNG NÀY: Bỏ qua kiểm tra trùng lặp nếu giá trị là null
+        default: null 
     },
-    messageCount: { type: Number, default: 0 },
-    createdAt: { type: Date, default: Date.now }
+
+    // 5. BẢO MẬT & QUÊN MẬT KHẨU (OTP)
+    resetPasswordOtp: { 
+        type: String, 
+        default: null 
+    },
+    resetPasswordExpires: { 
+        type: Date, 
+        default: null 
+    },
+
+    // 6. HỒ SƠ TÂM LÝ (Dành cho AI hiểu ngữ cảnh người dùng)
+    userContext: { 
+        type: String, 
+        default: "Người dùng mới, chưa có thông tin. Hãy chia sẻ một chút về cậu nhé..." 
+    }
+}, { 
+    // Tự động thêm createdAt (Ngày tham gia) và updatedAt (Lần cập nhật cuối)
+    timestamps: true 
 });
 
-module.exports = mongoose.model('User', UserSchema);
+module.exports = mongoose.model('User', userSchema);
