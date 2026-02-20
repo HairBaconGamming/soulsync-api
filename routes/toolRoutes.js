@@ -10,7 +10,14 @@ router.post('/mood', auth, async (req, res) => {
     try {
         const { mood, note } = req.body; 
         const user = await User.findById(req.userId);
-        const today = new Date().toISOString().split('T')[0];
+        
+        // 🌟 NÂNG CẤP: Ép định dạng YYYY-MM-DD theo đúng múi giờ Việt Nam
+        const today = new Intl.DateTimeFormat('en-CA', { 
+            timeZone: 'Asia/Ho_Chi_Minh', 
+            year: 'numeric', 
+            month: '2-digit', 
+            day: '2-digit' 
+        }).format(new Date());
         
         const existing = user.moodHistory.findIndex(m => m.date === today);
         if (existing > -1) {

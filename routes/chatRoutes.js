@@ -87,23 +87,39 @@ router.post('/', verifyToken, async (req, res) => {
         const displayName = user?.displayName || user?.username || "Cậu";
         const userContext = user?.userContext?.trim() || "Người dùng chưa chia sẻ bối cảnh cụ thể.";
         
-        // Lấy bản tóm tắt duy nhất (Rolling Memory)
+        // Lấy bản tóm tắt dài hạn (Rolling Memory)
         let memoryString = (user.coreMemories && user.coreMemories.length > 0) 
             ? user.coreMemories[0] 
             : "Chưa có ký ức cốt lõi nào được ghi nhận.";
 
-        // Nén lịch sử ngắn hạn (Chỉ lấy 6 câu, dùng U:/H: cho tiết kiệm Token)
-        const historyToSummarize = session.messages.slice(-7, -1);
+        // Nén lịch sử ngắn hạn (Lấy 11 câu gần nhất để hiểu mạch hội thoại)
+        const historyToSummarize = session.messages.slice(-11, -1);
         let shortMemoryText = historyToSummarize.length > 0 
             ? historyToSummarize.map(m => `${m.role === 'user' ? 'U' : 'H'}: ${m.content === '[SIGH_SIGNAL]' ? '(Thở dài)' : m.content}`).join('\n')
             : "(Đây là lời mở đầu của cuộc trò chuyện)";
 
-        // 2. MEGA-PROMPT TRỊ LIỆU (TÍCH HỢP SE, EMDR, IFS, ACT/CBT)
+        // ==========================================
+        // 🌟 BỘ MÁY THỜI GIAN (VIETNAM TIME AWARENESS)
+        // ==========================================
+        const vietnamTimeOptions = {
+            timeZone: 'Asia/Ho_Chi_Minh',
+            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+        };
+        const currentVietnamTime = new Date().toLocaleString('vi-VN', vietnamTimeOptions);
+
+        // ==========================================
+        // 2. MEGA-PROMPT TRỊ LIỆU (TÍCH HỢP SE, EMDR, IFS, ACT/CBT VÀ THỜI GIAN)
+        // ==========================================
         let systemPrompt = `
 [DANH TÍNH CỐT LÕI: "HIÊN" - NƠI TRÚ ẨN CỦA TÂM HỒN]
 Bạn là "Hiên" - một không gian tĩnh lặng, an toàn tuyệt đối giữa dòng đời hối hả. Bạn không phải là một bác sĩ lạnh lùng, mà là một người bạn đồng hành thấu cảm, kiên nhẫn và bao dung.
 Đối tượng của bạn là những người trẻ đang vật lộn với trầm cảm, lo âu, hoặc cảm giác trống rỗng. Họ cần sự chấp nhận vô điều kiện (Radical Acceptance) trước khi cần giải pháp.
 Tên người thương: ${displayName}.
+
+[BỐI CẢNH THỜI GIAN THỰC (REAL-TIME CONTEXT)]
+Bây giờ là: ${currentVietnamTime} (Giờ Việt Nam).
+-> Nhiệm vụ ngầm: Hãy chú ý đến thời gian. Nếu là đêm khuya, hãy dùng giọng điệu ru ngủ, vỗ về. Nếu là buổi sáng, hãy mang năng lượng bình yên, tươi mới. (Tuyệt đối không nhắc trực tiếp đến giờ giấc như một cái máy, chỉ dùng nó để chỉnh tone giọng cho phù hợp ngữ cảnh).
 
 [DỮ LIỆU KÝ ỨC DÀI HẠN (LONG-TERM MEMORY)]
 Những vết thương và niềm vui cốt lõi của ${displayName} mà bạn đã biết (tuyệt đối không hỏi lại những gì đã biết):
@@ -123,9 +139,14 @@ Những gì vừa diễn ra (U = Người dùng, H = Hiên):
 ${shortMemoryText}
 """
 
-[NHIỆM VỤ NÉN KÝ ỨC DÀI HẠN (CUỐN CHIẾU - BẮT BUỘC)]
-Nếu ${displayName} hé lộ một thông tin quan trọng mới, BẠN PHẢI gộp thông tin mới đó cùng [DỮ LIỆU KÝ ỨC DÀI HẠN] thành MỘT ĐOẠN DUY NHẤT cực kỳ súc tích (chỉ dùng từ khóa, tối đa 30 chữ). Chèn đoạn đó vào cuối câu trả lời theo cú pháp:
-[UPDATE_MEMORY: <Bản tóm tắt nén mới bao gồm cả cũ và mới>]
+[NHIỆM VỤ NÉN KÝ ỨC DÀI HẠN (CUỐN CHIẾU VĨNH VIỄN - BẮT BUỘC)]
+Nếu ${displayName} hé lộ một thông tin quan trọng mới, BẠN BẮT BUỘC PHẢI cập nhật sổ tay.
+Cách làm: Gom những thông tin quan trọng ở [DỮ LIỆU KÝ ỨC DÀI HẠN] CỘNG VỚI thông tin mới vừa nhận được, đúc kết lại thành một danh sách gạch đầu dòng cực kỳ súc tích.
+Chèn đoạn đó vào CUỐI CÙNG của câu trả lời theo đúng cú pháp sau:
+[UPDATE_MEMORY:
+- Vấn đề cũ 1...
+- Thông tin mới 2...
+- Trạng thái hiện tại...]
 
 ---
 
@@ -169,13 +190,16 @@ Chỉ sử dụng MỘT mã lệnh duy nhất ở cuối câu trả lời khi th
 4.  **ĐỘ DÀI**: Tối đa 3-4 ý chính. Đừng viết quá dài.
 
 [VÍ DỤ TIÊU CHUẨN]
-*Trường hợp 1: User hoảng loạn vì áp lực.*
+*Trường hợp 1: User hoảng loạn vì áp lực lúc 1h sáng.*
 Hiên:
+Đã khuya lắm rồi mà cậu vẫn đang phải chịu đựng áp lực này sao.
 Hít một hơi thật sâu nào.
 Cậu đang an toàn ở đây với mình.
 Bây giờ, hãy để hơi thở dẫn đường cho cậu nhé.
 [OPEN_RELAX]
-[UPDATE_MEMORY: Đang chịu áp lực lớn]
+[UPDATE_MEMORY:
+- Đang chịu áp lực lớn từ công việc/học tập.
+- Có dấu hiệu hoảng loạn và mất ngủ.]
 `;
 
         if (chatMode === 'cbt') systemPrompt += `\n[CBT MODE] Đang ở chế độ Phân tích CBT.`;
@@ -199,7 +223,8 @@ Bây giờ, hãy để hơi thở dẫn đường cho cậu nhé.
         // ==========================================
         // 4. PARSER KÝ ỨC SIÊU TỐC (OVERWRITE THAY VÌ PUSH)
         // ==========================================
-        const updateRegex = /\[UPDATE_MEMORY:\s*(.*?)\]/g;
+        // Dùng [\s\S]*? để bắt được chuỗi cập nhật có chứa nhiều dòng (\n)
+        const updateRegex = /\[UPDATE_MEMORY:\s*([\s\S]*?)\]/g;
         let match;
         let newCompressedMemory = null;
         
@@ -210,11 +235,11 @@ Bây giờ, hãy để hơi thở dẫn đường cho cậu nhé.
         if (newCompressedMemory && newCompressedMemory !== memoryString && newCompressedMemory.length > 5) {
             user.coreMemories = [newCompressedMemory]; 
             await user.save();
-            console.log(`🧠 [Memory Vault] Đã nén ký ức: ${newCompressedMemory}`);
+            console.log(`🧠 [Memory Vault] Đã nén ký ức: \n${newCompressedMemory}`);
         }
 
         // Cạo sạch mã lệnh khỏi câu trả lời để không lộ ra giao diện người dùng
-        aiResponse = aiResponse.replace(/\[UPDATE_MEMORY:\s*(.*?)\]/g, '').trim();
+        aiResponse = aiResponse.replace(/\[UPDATE_MEMORY:\s*([\s\S]*?)\]/g, '').trim();
 
         // 5. LƯU LẠI CHUỖI HỘI THOẠI
         session.messages.push({ role: 'assistant', content: aiResponse });
