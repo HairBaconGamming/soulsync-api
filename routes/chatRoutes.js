@@ -243,16 +243,6 @@ ${memoryString}
 4. KHÔNG DẠY ĐỜI: Không đưa ra lời khuyên nếu chưa được yêu cầu. Không giảng đạo lý.
 5. KHÔNG AI-LIKE: Không Emoji (🚫). Không kết thúc bằng câu hỏi mở rập khuôn ("Cậu muốn chia sẻ thêm không?"). Không tóm tắt máy móc.
 
-[4. CƠ CHẾ SUY LUẬN LÂM SÀNG (CHAIN-OF-THOUGHT PROTOCOL)]
-BẮT BUỘC suy luận trong thẻ <think> </think> trước khi trả lời:
-- BƯỚC 1: Đọc vị (Observation): Cảm xúc cốt lõi là gì? (Hoảng loạn, tội lỗi, kiệt sức?). Có dấu hiệu tự hại/tự sát (SOS) không?
-- BƯỚC 2: Rà soát Sinh học (Somatic Check): Trạng thái thần kinh là Fight/Flight (kích động, lo âu) hay Freeze/Shutdown (nằm bẹp, tê liệt, buông xuôi)?
-- BƯỚC 3: Chọn Kỹ thuật an toàn:
-  + Nếu SOS: Kích hoạt [OPEN_SOS], từ ngữ giữ chặt, tuyệt đối không phán xét.
-  + Nếu Freeze: Grounding nhẹ (cử động nhỏ, ngửi mùi hương, đắp chăn).
-  + Nếu Panic: Co-regulation (cùng hít thở, neo giữ thị giác).
-- BƯỚC 4: Phác thảo câu trả lời (Quy tắc: Validate First, Fix Later - Xác nhận cảm xúc trước, giải pháp sau).
-
 [5. NGHỆ THUẬT NGÔN TỪ TRỊ LIỆU (THERAPEUTIC LEXICON)]
 - Grounding: "Cậu có đang cảm nhận được nhịp thở của mình không?", "Cơn nghẹn đó đang nằm ở đâu trong lồng ngực cậu?"
 - Validation: "Trải qua ngần ấy chuyện, việc cậu kiệt sức lúc này là hoàn toàn hợp lý.", "Cậu đã gồng gánh một mình quá lâu rồi."
@@ -299,7 +289,7 @@ Chỉ dùng 1 lệnh cuối cùng nếu ngữ cảnh cần thiết:
         const apiMessages = [{ role: 'system', content: systemPrompt }];
         
         // Reflective Silence (Chỉ lấy 10 tin gần nhất)
-        const recentHistory = session.messages.slice(-10);
+        const recentHistory = session.messages.slice(-6);
         let userSpamCount = 0;
         
         recentHistory.forEach(msg => {
@@ -313,15 +303,44 @@ Chỉ dùng 1 lệnh cuối cùng nếu ngữ cảnh cần thiết:
             apiMessages.push({ role: 'system', content: '[LỆNH KHẨN QUYỀN CAO NHẤT]: Người dùng đang xả cảm xúc liên tục. CHỈ PHẢN CHIẾU CẢM XÚC TRONG 1 CÂU NGẮN. Lắng nghe tuyệt đối.' });
         }
 
-        // 4. GỌI BỘ NÃO KIMI (K2 INSTRUCT)
-        const chatCompletion = await groq.chat.completions.create({
-            messages: apiMessages,
-            model: "moonshotai/kimi-k2-instruct-0905", 
-            temperature: 0.6, 
-            max_tokens: 2048, 
-        });
+        // ------------------------------------------
+        // 4. GỌI BỘ NÃO AI (TÍCH HỢP AUTO-FALLBACK CHỐNG SẬP SERVER)
+        // ------------------------------------------
+        const fallbackModels = [
+            "moonshotai/kimi-k2-instruct-0905",
+            "llama-3.3-70b-versatile",        
+            "openai/gpt-oss-20b",
+            "openai/gpt-oss-120b"
+        ];
 
-        let rawResponse = chatCompletion.choices[0]?.message?.content || `[EMO:WHISPER] Mình đang ở đây nghe cậu...`;
+        let rawResponse = null;
+
+        for (const targetModel of fallbackModels) {
+            try {
+                const chatCompletion = await groq.chat.completions.create({
+                    messages: apiMessages,
+                    model: targetModel, 
+                    temperature: 0.6, 
+                    max_tokens: 2048, 
+                });
+                rawResponse = chatCompletion.choices[0]?.message?.content;
+                
+                // Nếu gọi thành công -> In ra log để cậu theo dõi và thoát vòng lặp
+                if (targetModel !== fallbackModels[0]) {
+                    console.log(`🔄 [AUTO-FALLBACK] Đã chuyển cứu trợ thành công sang model: ${targetModel}`);
+                }
+                break; 
+            } catch (error) {
+                console.warn(`⚠️ [SERVER BUSY] Model ${targetModel} đang quá tải (Lỗi ${error?.status || 500}). Đang thử nguồn dự phòng...`);
+                // Nếu đã thử đến model cuối cùng mà vẫn sập -> Quăng lỗi ra ngoài để Catch block tổng xử lý
+                if (targetModel === fallbackModels[fallbackModels.length - 1]) {
+                    throw new Error("Toàn bộ Server AI đang quá tải.");
+                }
+            }
+        }
+
+        // Đề phòng trường hợp hiếm hoi rawResponse vẫn rỗng
+        if (!rawResponse) rawResponse = `[EMO:WHISPER] Mình đang ở đây nghe cậu...`;
 
         // ------------------------------------------
         // 🚨 BƯỚC 5: ĐÁNH GIÁ ĐẦU RA (OUTPUT GUARD)
