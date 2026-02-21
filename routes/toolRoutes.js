@@ -162,4 +162,51 @@ router.post('/microwins/consume', auth, async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Lỗi giải phóng năng lượng" }); }
 });
 
+// --- THÊM VÀO backend/routes/toolRoutes.js ---
+// API: TRẠM ĐIỀU PHỐI NĂNG LƯỢNG AI (Tạo nhiệm vụ tùy chỉnh)
+router.get('/microwins/daily', auth, async (req, res) => {
+    try {
+        const user = await User.findById(req.userId);
+        const context = user.userContext || "Một người dùng đang cần chút động lực để bước tiếp.";
+        
+        // Lấy giờ Việt Nam để AI giao việc cho chuẩn
+        const vnHour = new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh", hour: 'numeric', hour12: false });
+        let timeContext = "Ban ngày";
+        if (vnHour >= 18 || vnHour < 5) timeContext = "Buổi tối/Đêm khuya";
+
+        const prompt = `Bạn là một hệ thống kỷ luật mềm mại. Dựa vào bối cảnh tâm lý sau: "${context}", và thời gian hiện tại là: ${timeContext}.
+Hãy thiết kế đúng 4 "Hạt mầm sinh mệnh" (Nhiệm vụ siêu nhỏ) để người dùng thực hiện ngay lập tức.
+Yêu cầu NGHIÊM NGẶT:
+- Nhiệm vụ phải thực tế, vật lý (không phải suy nghĩ), làm được trong dưới 2 phút.
+- Gắn liền với bối cảnh của họ (VD: Nếu họ áp lực học tập, xúi họ uống nước/nhìn xa; Nếu họ trầm cảm nằm bẹp, xúi họ ngồi dậy vươn vai).
+- Trả về ĐÚNG chuẩn JSON (không kèm text) với cấu trúc sau:
+{
+  "tasks": [
+    { "id": 1, "title": "Tên nhiệm vụ ngắn gọn", "desc": "Lý do khoa học/tâm lý (1 câu)", "points": 15 },
+    ... 3 task nữa
+  ]
+}
+Số điểm (points) dao động từ 10 đến 30.`;
+
+        const completion = await groq.chat.completions.create({
+            messages: [{ role: "system", content: prompt }],
+            model: "moonshotai/kimi-k2-instruct-0905",
+            temperature: 0.6,
+            response_format: { type: "json_object" }
+        });
+
+        const result = JSON.parse(completion.choices[0]?.message?.content);
+        res.json(result.tasks);
+    } catch (e) {
+        console.error("Lỗi tạo Task AI:", e);
+        // Fallback khẩn cấp nếu AI lỗi
+        res.json([
+            { id: 1, title: 'Uống một cốc nước đầy', desc: 'Hydrat hóa não bộ giúp giảm sương mù tâm trí ngay lập tức.', points: 10 },
+            { id: 2, title: 'Rời mắt khỏi màn hình 60s', desc: 'Nhìn ra xa 20 mét để nhãn cầu được nhả cơ gồng.', points: 15 },
+            { id: 3, title: 'Rửa mặt bằng nước mát', desc: 'Kích hoạt dây thần kinh phế vị, reset nhịp tim.', points: 20 },
+            { id: 4, title: 'Gấp chăn hoặc dọn mặt bàn', desc: 'Lấy lại cảm giác kiểm soát không gian xung quanh.', points: 20 }
+        ]);
+    }
+});
+
 module.exports = router;
