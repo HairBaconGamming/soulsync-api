@@ -31,10 +31,10 @@ router.get('/profile', verifyToken, async (req, res) => {
     }
 });
 
-// 2. CẬP NHẬT HỒ SƠ (DisplayName, UserContext, AiPersona, isIncognito)
+// 2. CẬP NHẬT HỒ SƠ (Đa dụng cho cả Cài đặt và Tưới Cây)
 router.put('/profile', verifyToken, async (req, res) => {
     try {
-        const { displayName, userContext, aiPersona, isIncognito } = req.body; 
+        const { displayName, userContext, aiPersona, isIncognito, totalEnergy, rebirthCount } = req.body; 
         const user = await User.findById(req.user.id);
         
         if (!user) return res.status(404).json({ error: "Không tìm thấy người dùng." });
@@ -42,17 +42,23 @@ router.put('/profile', verifyToken, async (req, res) => {
         if (displayName !== undefined) user.displayName = displayName;
         if (userContext !== undefined) user.userContext = userContext;
         if (aiPersona !== undefined) user.aiPersona = aiPersona; 
-        if (isIncognito !== undefined) user.isIncognito = isIncognito; // Thêm dòng này vào
+        if (isIncognito !== undefined) user.isIncognito = isIncognito; 
+        
+        // 👉 THÊM 2 DÒNG NÀY ĐỂ LƯU DATA CỦA CÂY
+        if (totalEnergy !== undefined) user.totalEnergy = totalEnergy;
+        if (rebirthCount !== undefined) user.rebirthCount = rebirthCount;
 
         await user.save();
         
         res.json({ 
-            message: "Đã lưu thông tin của cậu 🌿", 
+            message: "Đã lưu thông tin 🌿", 
             user: { 
                 displayName: user.displayName, 
                 userContext: user.userContext,
                 aiPersona: user.aiPersona,
-                isIncognito: user.isIncognito
+                isIncognito: user.isIncognito,
+                totalEnergy: user.totalEnergy,
+                rebirthCount: user.rebirthCount
             } 
         });
     } catch (error) {

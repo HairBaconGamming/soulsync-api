@@ -50,10 +50,11 @@ const userSchema = new mongoose.Schema({
     // 7. DỮ LIỆU CÁC CÔNG CỤ TRỊ LIỆU
     moodHistory: { type: Array, default: [] },
     fireflies: { type: Array, default: [] },
-    microWinsCount: { type: Number, default: 0 }
-
-}, { 
-    timestamps: true 
-});
+    microWinsCount: { type: Number, default: 0 },
+    
+    // THÊM 2 DÒNG NÀY CHO CÂY THẾ GIỚI
+    totalEnergy: { type: Number, default: 0 },
+    rebirthCount: { type: Number, default: 0 }
+}, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);
