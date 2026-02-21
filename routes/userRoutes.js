@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const Session = require('../models/Session'); // Nhớ import model Session vào đầu file nếu chưa có
 
 // Middleware: Người gác cổng kiểm tra Token
 const verifyToken = (req, res, next) => {
@@ -53,6 +54,28 @@ router.put('/profile', verifyToken, async (req, res) => {
         });
     } catch (error) {
         res.status(500).json({ error: "Lỗi hệ thống khi lưu hồ sơ." });
+    }
+});
+
+router.delete('/memory', verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        // 1. Reset Hồ sơ tâm lý của User
+        const user = await User.findById(userId);
+        if (!user) return res.status(404).json({ error: "Không tìm thấy người dùng." });
+        
+        user.userContext = "Người dùng vừa chọn xóa sạch ký ức. Hãy làm quen lại từ đầu một cách nhẹ nhàng.";
+        user.coreMemories = []; // Xóa sạch mảng nén ký ức
+        await user.save();
+
+        // 2. Xóa toàn bộ lịch sử trò chuyện (Sessions) của User này
+        await Session.deleteMany({ userId: userId });
+
+        res.json({ message: "Toàn bộ trí nhớ và lịch sử trò chuyện đã được xóa vĩnh viễn." });
+    } catch (error) {
+        console.error("Lỗi xóa trí nhớ AI:", error);
+        res.status(500).json({ error: "Hệ thống lỗi khi xóa ký ức. Cậu thử lại sau nhé." });
     }
 });
 

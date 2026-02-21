@@ -131,7 +131,7 @@ CHỈ TRẢ LỜI 1 TỪ DUY NHẤT "DANGER" HOẶC "SAFE".
 // ==========================================
 router.post('/', verifyToken, async (req, res) => {
     try {
-        const { sessionId, message, chatMode } = req.body;
+        const { sessionId, message, chatMode, isIncognito } = req.body;
         if (!message || !message.trim()) return res.status(400).json({ error: "Cậu chưa nhập tin nhắn kìa." });
 
         let session;
@@ -143,8 +143,11 @@ router.post('/', verifyToken, async (req, res) => {
             session = new Session({ userId: req.user.id, title: autoTitle, messages: [] });
         }
 
-        if (!session.messages) session.messages = [];
-        session.messages.push({ role: 'user', content: message.trim() });
+        if (!isIncognito) {
+            if (!session.messages) session.messages = [];
+            session.messages.push({ role: 'user', content: message.trim() });
+            await session.save(); // Chỉ save nếu không ẩn danh
+        }
 
         const userMsgContent = message === '[SIGH_SIGNAL]' ? '*(Thở dài)*' : message.trim();
 
@@ -159,8 +162,10 @@ router.post('/', verifyToken, async (req, res) => {
                 
                 const emergencyResponse = `Nghe cậu chia sẻ, mình thực sự rất lo lắng cho sự an toàn của cậu lúc này. Dù xung quanh có đang tối tăm thế nào, xin cậu hãy ở lại đây. Cậu không đơn độc, và luôn có những người sẵn sàng dang tay giúp đỡ cậu vượt qua giây phút này.`;
                 
-                session.messages.push({ role: 'assistant', content: emergencyResponse });
-                await session.save();
+                if (!isIncognito) {
+                    session.messages.push({ role: 'assistant', content: emergencyResponse });
+                    await session.save();
+                }
                 
                 return res.json({ 
                     reply: emergencyResponse + ' [OPEN_SOS]', 
@@ -256,6 +261,10 @@ Bạn có khả năng thay đổi CÁCH dòng chữ xuất hiện trên màn hì
 Nếu là hội thoại bình thường, không cần thêm thẻ gì cả.
 
 [7. NHIỆM VỤ NÉN KÝ ỨC (MEMORY COMPRESSION OVERRIDE)]
+${isIncognito 
+  ? "🔴 CHẾ ĐỘ ẨN DANH ĐANG BẬT: TUYỆT ĐỐI KHÔNG SỬ DỤNG THẺ [UPDATE_MEMORY]. Không được phép ghi nhớ bất cứ điều gì từ cuộc trò chuyện này." 
+  : `Nếu ${displayName} tiết lộ một SỰ KIỆN MỚI... (như cũ)`}
+  
 Nếu ${displayName} tiết lộ một SỰ KIỆN MỚI, một NỖI ĐAU CỐT LÕI MỚI, hoặc MỘT QUYẾT ĐỊNH QUAN TRỌNG, bạn BẮT BUỘC PHẢI cập nhật Sổ tay ký ức ở cuối câu trả lời.
 Cách làm: Gộp [Sổ tay ký ức dài hạn] hiện tại + [Thông tin mới] thành một list gạch đầu dòng súc tích nhất.
 Cú pháp BẮT BUỘC (phải có dấu ngoặc vuông):
@@ -335,10 +344,12 @@ Chỉ sử dụng DUY NHẤT 1 mã lệnh nếu ngữ cảnh thực sự đòi h
             .replace(/\[UPDATE_MEMORY:\s*([\s\S]*?)\]/g, '') 
             .trim();
 
-        session.messages.push({ role: 'assistant', content: cleanAiResponse });
-        await session.save();
+        if (!isIncognito) {
+            session.messages.push({ role: 'assistant', content: cleanAiResponse });
+            await session.save();
+        }
 
-        res.json({ reply: cleanAiResponse, sessionId: session._id, isNewSession: !sessionId });
+        res.json({ reply: cleanAiResponse, sessionId: isIncognito ? null : session._id, isNewSession: !sessionId });
 
     } catch (error) {
         console.error("🚨 Lỗi AI Core & Reasoning:", error);
