@@ -301,7 +301,7 @@ Chỉ sử dụng DUY NHẤT 1 mã lệnh nếu ngữ cảnh thực sự đòi h
             messages: apiMessages,
             model: "moonshotai/kimi-k2-instruct-0905", 
             temperature: 0.5, 
-            max_tokens: 2048, 
+            max_tokens: 4096, 
         });
 
         let rawResponse = chatCompletion.choices[0]?.message?.content || `Hiên đang bối rối một chút...`;
