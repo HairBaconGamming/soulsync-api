@@ -31,10 +31,10 @@ router.get('/profile', verifyToken, async (req, res) => {
     }
 });
 
-// 2. CẬP NHẬT HỒ SƠ (Đa dụng cho cả Cài đặt và Tưới Cây)
+// 2. CẬP NHẬT HỒ SƠ (Bao gồm cả Cấm kỵ và Xóa Ký ức)
 router.put('/profile', verifyToken, async (req, res) => {
     try {
-        const { displayName, userContext, aiPersona, isIncognito, totalEnergy, rebirthCount } = req.body; 
+        const { displayName, userContext, aiPersona, isIncognito, totalEnergy, rebirthCount, blacklistedTopics, coreMemories } = req.body; 
         const user = await User.findById(req.user.id);
         
         if (!user) return res.status(404).json({ error: "Không tìm thấy người dùng." });
@@ -43,24 +43,15 @@ router.put('/profile', verifyToken, async (req, res) => {
         if (userContext !== undefined) user.userContext = userContext;
         if (aiPersona !== undefined) user.aiPersona = aiPersona; 
         if (isIncognito !== undefined) user.isIncognito = isIncognito; 
-        
-        // 👉 THÊM 2 DÒNG NÀY ĐỂ LƯU DATA CỦA CÂY
         if (totalEnergy !== undefined) user.totalEnergy = totalEnergy;
         if (rebirthCount !== undefined) user.rebirthCount = rebirthCount;
+        
+        // 👉 CẬP NHẬT 2 TRƯỜNG MỚI NÀY
+        if (blacklistedTopics !== undefined) user.blacklistedTopics = blacklistedTopics;
+        if (coreMemories !== undefined) user.coreMemories = coreMemories;
 
         await user.save();
-        
-        res.json({ 
-            message: "Đã lưu thông tin 🌿", 
-            user: { 
-                displayName: user.displayName, 
-                userContext: user.userContext,
-                aiPersona: user.aiPersona,
-                isIncognito: user.isIncognito,
-                totalEnergy: user.totalEnergy,
-                rebirthCount: user.rebirthCount
-            } 
-        });
+        res.json({ message: "Đã lưu thông tin 🌿" });
     } catch (error) {
         res.status(500).json({ error: "Lỗi hệ thống khi lưu hồ sơ." });
     }

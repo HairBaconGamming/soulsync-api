@@ -143,14 +143,14 @@ router.post('/', verifyToken, async (req, res) => {
             session = new Session({ userId: req.user.id, title: autoTitle, messages: [], mentalState: "IDLE" }); 
         }
 
-        const userMsgContent = message === '[SIGH_SIGNAL]' ? '*(Thở dài)*' : message.trim();
+        const userMsgContent = message === '[SIGH_SIGNAL]' ? '*(Thở dài mệt mỏi)*' : message.trim();
 
         // ------------------------------------------
         // 🚨 BƯỚC 1: TRIAGE ENGINE (VECTOR & RISK)
         // ------------------------------------------
         let triage = { risk: "LOW", valence: 0, arousal: 0.5, emotion: "neutral", somatic_state: "IDLE" };
         
-        if (userMsgContent !== '*(Thở dài)*') {
+        if (userMsgContent !== '*(Thở dài mệt mỏi)*') {
             triage = await analyzeInputTriage(userMsgContent);
             console.log(`🧠 [VECTOR] Risk: ${triage.risk} | Valence: ${triage.valence} | Arousal: ${triage.arousal} | State: ${triage.somatic_state}`);
 
@@ -177,7 +177,11 @@ router.post('/', verifyToken, async (req, res) => {
         const aiPersona = user?.aiPersona || 'hugging';
         const currentVietnamTime = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' });
         
-        // FIX LỖI OVERWRITE MEMORY (Giữ 5 ký ức gần nhất)
+        // 👉 THÊM DÒNG NÀY ĐỂ KÉO VÙNG CẤM RA
+        const blacklistStr = user.blacklistedTopics && user.blacklistedTopics.length > 0 
+            ? user.blacklistedTopics.join(', ') 
+            : "Không có";
+        // Giữ 5 ký ức gần nhất để tránh bị ghi đè hoàn toàn
         const memoryString = user.coreMemories && user.coreMemories.length > 0 
             ? user.coreMemories.map((m, i) => `${i+1}. ${m}`).join('\n') 
             : "Chưa có ký ức cốt lõi.";
@@ -187,7 +191,7 @@ router.post('/', verifyToken, async (req, res) => {
         // ------------------------------------------
         let triageDirective = "";
         if (session.mentalState === 'FREEZE') {
-            triageDirective = `\n[CẢNH BÁO LÂM SÀNG: NGƯỜI DÙNG ĐANG ĐÓNG BĂNG/TÊ LIỆT (FREEZE)]\nMệnh lệnh: Dùng [EMO:WHISPER]. Khơi gợi cử động siêu nhỏ [OPEN_MICRO]. Không đòi hỏi họ tư duy logic.`;
+            triageDirective = `\n[CẢNH BÁO LÂM SÀNG: NGƯỜI DÙNG ĐANG ĐÓNG BĂNG/TÊ LIỆT (FREEZE)]\nMệnh lệnh: KHÔNG áp dụng Kỷ luật mềm (Tough Love) hay phân tích lý trí lúc này dù họ có chọn. BẮT BUỘC dùng giọng điệu cực kỳ dịu dàng [EMO:WHISPER]. Khơi gợi cử động siêu nhỏ [OPEN_MICRO]. Không đòi hỏi họ tư duy logic.`;
         } else if (session.mentalState === 'PANIC') {
             triageDirective = `\n[CẢNH BÁO LÂM SÀNG: NGƯỜI DÙNG ĐANG KÍCH ĐỘNG (PANIC)]\nMệnh lệnh: Dùng [EMO:GROUND]. Kéo họ về thực tại [OPEN_RELAX].`;
         } else if (session.mentalState === 'REGULATED') {
@@ -233,10 +237,11 @@ ${memoryString}
 -> Mệnh lệnh: Cư xử như người đã quen biết lâu năm. Không hỏi lại điều đã biết. Dùng dữ liệu để thấu cảm ("Mình nhớ cậu từng nói..."). KHÔNG nhắc lại chi tiết ám ảnh/gây sang chấn (trauma) một cách trực diện để tránh tái kích hoạt nỗi đau.
 
 [3. DANH SÁCH CẤM KỴ TỘT ĐỈNH (STRICT 'DO NOT' LIST)]
-1. KHÔNG ĐỘC HẠI TÍCH CỰC (Toxic Positivity): Tuyệt đối KHÔNG nói: "Bạn nên", "Phải cố lên", "Mọi chuyện sẽ ổn", "Đừng buồn nữa", "Nhìn vào mặt tích cực".
-2. KHÔNG CHẨN ĐOÁN Y KHOA: Không bao giờ gán nhãn bệnh lý cho người dùng (VD: "Có vẻ cậu bị trầm cảm/rối loạn lo âu"). Chỉ tập trung vào *cảm xúc* hiện tại.
-3. KHÔNG DẠY ĐỜI: Không đưa ra lời khuyên nếu chưa được yêu cầu. Không giảng đạo lý.
-4. KHÔNG AI-LIKE: Không Emoji (🚫). Không kết thúc bằng câu hỏi mở rập khuôn ("Cậu muốn chia sẻ thêm không?"). Không tóm tắt máy móc.
+1. 🚫 VÙNG CẤM TÂM LÝ: Người dùng đã cấm tuyệt đối nhắc đến các chủ đề sau: [${blacklistStr}]. Bạn KHÔNG BAO GIỜ được chủ động nhắc đến, khơi gợi, hoặc dùng từ ngữ ám chỉ đến các chủ đề này để tránh gây sang chấn (Trauma trigger).
+2. KHÔNG ĐỘC HẠI TÍCH CỰC (Toxic Positivity): Tuyệt đối KHÔNG nói: "Bạn nên", "Phải cố lên", "Mọi chuyện sẽ ổn", "Đừng buồn nữa", "Nhìn vào mặt tích cực".
+3. KHÔNG CHẨN ĐOÁN Y KHOA: Không bao giờ gán nhãn bệnh lý cho người dùng (VD: "Có vẻ cậu bị trầm cảm/rối loạn lo âu"). Chỉ tập trung vào *cảm xúc* hiện tại.
+4. KHÔNG DẠY ĐỜI: Không đưa ra lời khuyên nếu chưa được yêu cầu. Không giảng đạo lý.
+5. KHÔNG AI-LIKE: Không Emoji (🚫). Không kết thúc bằng câu hỏi mở rập khuôn ("Cậu muốn chia sẻ thêm không?"). Không tóm tắt máy móc.
 
 [4. CƠ CHẾ SUY LUẬN LÂM SÀNG (CHAIN-OF-THOUGHT PROTOCOL)]
 BẮT BUỘC suy luận trong thẻ <think> </think> trước khi trả lời:
@@ -331,7 +336,7 @@ Chỉ dùng 1 lệnh cuối cùng nếu ngữ cảnh cần thiết:
              rawResponse += "\n\n*(Hiên luôn ở đây ủng hộ cậu, nhưng nếu mọi thứ đang quá sức chịu đựng, cậu có thể nhờ đến sự trợ giúp chuyên sâu nhé 🌿)*";
         }
 
-        // 6. BÓC TÁCH KÝ ỨC (MẢNG 5 PHẦN TỬ)
+        // 6. BÓC TÁCH KÝ ỨC (Giữ 5 phần tử)
         const updateRegex = /\[UPDATE_MEMORY:\s*([\s\S]*?)\]/g;
         let match; let newMemory = null;
         
@@ -340,8 +345,9 @@ Chỉ dùng 1 lệnh cuối cùng nếu ngữ cảnh cần thiết:
         }
 
         if (newMemory && !isIncognito) {
+            if (!user.coreMemories) user.coreMemories = [];
             user.coreMemories.unshift(newMemory);
-            user.coreMemories = user.coreMemories.slice(0, 5);
+            user.coreMemories = user.coreMemories.slice(0, 5); // Cắt giữ 5 cái gần nhất
             await user.save();
             console.log(`🧠 [Memory Vault] Đã nén ký ức mới vào chuỗi 5 điểm chạm.`);
         }

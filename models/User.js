@@ -39,10 +39,29 @@ const userSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+
+    aiMemory: {
+        // 1. Warm Continuity (Kết nối cảm xúc)
+        warmContinuity: { type: Array, default: [] }, // Format: { content: String, emotion: String, date: String }
+        
+        // 2. Safety Flag (Bảo vệ tính mạng ngầm)
+        hasPastHighRisk: { type: Boolean, default: false },
+        
+        // 3. Comfort Preference (Sở thích được xoa dịu)
+        bestApproach: { type: String, default: "hugging" }, // hugging, socratic, silence, micro
+        
+        // 4. Trigger Patterns (Điểm kích hoạt cảm xúc)
+        triggerPatterns: { type: Array, default: [] } // Format: { trigger: "Học tập", emotion: "anxiety" }
+    },
     
     // ĐÂY LÀ VÙNG TRÍ NHỚ MỚI CỦA CẤP ĐỘ 1:
     // Nơi AI tự động đúc kết và nhét các sự kiện quan trọng vào.
     coreMemories: {
+        type: [String],
+        default: []
+    },
+
+    blacklistedTopics: {
         type: [String],
         default: []
     },
