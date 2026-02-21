@@ -127,6 +127,82 @@ CHỈ TRẢ LỜI 1 TỪ DUY NHẤT "DANGER" HOẶC "SAFE".
 }
 
 // ==========================================
+// 🌟 TÍNH NĂNG MỚI: HỆ THỐNG TIÊN TRI (PROACTIVE GREETING)
+// AI tự động phát lời chào dựa trên ký ức và thời gian
+// ==========================================
+router.get('/proactive', verifyToken, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id);
+        const displayName = user?.displayName || user?.username || "Cậu";
+        
+        // Trích xuất ký ức dài hạn
+        let memoryString = (user.coreMemories && user.coreMemories.length > 0) 
+            ? user.coreMemories[0] 
+            : null;
+
+        // Trích xuất thời gian thực tại Việt Nam để AI hiểu bối cảnh
+        const vietnamTimeOptions = {
+            timeZone: 'Asia/Ho_Chi_Minh',
+            hour: '2-digit', minute: '2-digit',
+            hour12: false
+        };
+        const currentTime = new Date().toLocaleString('vi-VN', vietnamTimeOptions);
+        const currentHour = parseInt(currentTime.split(':')[0]);
+
+        let timeContext = "ban ngày";
+        if (currentHour >= 22 || currentHour <= 3) timeContext = "đêm khuya, lúc mọi người đã ngủ";
+        else if (currentHour >= 4 && currentHour <= 7) timeContext = "rạng sáng, sương còn lạnh";
+        else if (currentHour >= 17 && currentHour <= 21) timeContext = "chiều tối, sau một ngày dài";
+
+        let proactivePrompt = `
+Bạn là Hiên, một người bạn tâm giao tĩnh lặng. Người dùng (tên: ${displayName}) vừa mở cửa bước vào "Hiên". Bạn là người cất lời chào ĐẦU TIÊN.
+
+[THÔNG TIN ĐẦU VÀO]
+- Bối cảnh thời gian: Đang là ${timeContext} (${currentTime}).
+- Ký ức của bạn về người này: ${memoryString ? `"""${memoryString}"""` : "Người dùng mới, chưa có ký ức."}
+
+[MỆNH LỆNH TIÊN TRI]
+Hãy viết MỘT câu mở lời duy nhất (tối đa 2-3 ý ngắn).
+1. NẾU ĐÃ CÓ KÝ ỨC: Hãy hỏi thăm tình hình dạo này dựa trên ký ức đó một cách tinh tế. (Ví dụ: "Chào ${displayName}. Hôm trước cậu nói đang áp lực thi cử, mấy nay đã đỡ hơn chút nào chưa?").
+2. NẾU LÀ ĐÊM KHUYA: Hãy thể hiện sự ngạc nhiên nhẹ nhàng và xoa dịu. (Ví dụ: "Khuya rồi mà cậu vẫn chưa ngủ được sao? Lại đây ngồi cạnh mình một chút nhé.").
+3. NẾU KHÔNG CÓ KÝ ỨC: Chào đón nhẹ nhàng theo thời gian.
+
+[HỆ THỐNG "CHỮ KÝ CẢM XÚC" (KINETIC TYPOGRAPHY PROTOCOL)]
+Bạn có khả năng thay đổi CÁCH dòng chữ xuất hiện trên màn hình để truyền tải cảm xúc phi ngôn từ. Hãy sử dụng các thẻ này ở ĐẦU câu trả lời nếu cần thiết (Chỉ dùng 1 thẻ):
+
+- [EMO:WHISPER]: Dùng khi bạn muốn nói rất khẽ, rất dịu dàng, như đang sợ làm người dùng giật mình. Dành cho những lúc họ đang quá đau buồn, dễ vỡ, hoặc khi bạn đang thú nhận sự bối rối của chính mình.
+  (Ví dụ: "[EMO:WHISPER]Mình ở đây. Cậu cứ khóc đi, không sao cả...")
+
+- [EMO:WARM]: Dùng khi bạn muốn truyền tải một cái ôm vô hình, sự ủng hộ mạnh mẽ, hoặc niềm tự hào về họ. Dòng chữ sẽ tỏa ra hơi ấm.
+  (Ví dụ: "[EMO:WARM]Cậu đã làm rất tốt rồi. Mình thực sự tự hào vì cậu đã cố gắng đến nhường này.")
+
+- [EMO:GROUND]: Dùng khi họ đang hoảng loạn tột độ (Panic Attack). Dòng chữ cần phải chắc chắn, hơi rung nhẹ để kéo sự chú ý của họ về thực tại.
+  (Ví dụ: "[EMO:GROUND]Nhìn vào dòng chữ này. Hít vào... Thở ra...")
+
+[QUY TẮC BẮT BUỘC]
+- Xưng "mình", gọi "cậu" hoặc tên.
+- TUYỆT ĐỐI KHÔNG dùng cấu trúc hỏi han như một cái máy (Ví dụ: "Hôm nay tôi giúp gì được cho bạn?").
+- CHỈ TRẢ VỀ CÂU CHÀO, không kèm giải thích.
+`;
+
+        const completion = await groq.chat.completions.create({
+            messages: [{ role: 'system', content: proactivePrompt }],
+            model: "moonshotai/kimi-k2-instruct-0905",
+            temperature: 0.6,
+            max_tokens: 150,
+        });
+
+        const aiGreeting = completion.choices[0]?.message?.content?.trim() || "[EMO:WARM]Chào cậu. Mình đã pha sẵn một ấm trà, cậu cứ ngồi xuống đây nghỉ ngơi nhé.";
+        
+        res.json({ greeting: aiGreeting });
+
+    } catch (error) {
+        console.error("Lỗi Proactive Greeting API:", error);
+        res.json({ greeting: "[EMO:WARM]Chào cậu, hôm nay cậu thấy thế nào? Mình ở đây, ngồi xuống hiên nhà và kể mình nghe nhé 🌿" });
+    }
+});
+
+// ==========================================
 // 5. TRUNG TÂM XỬ LÝ NGÔN NGỮ TỰ NHIÊN (NLP CORE - CLINICAL & FORTIFIED EDITION)
 // ==========================================
 router.post('/', verifyToken, async (req, res) => {
