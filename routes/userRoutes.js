@@ -31,17 +31,18 @@ router.get('/profile', verifyToken, async (req, res) => {
     }
 });
 
-// 2. CẬP NHẬT HỒ SƠ (DisplayName & UserContext)
+// 2. CẬP NHẬT HỒ SƠ (DisplayName, UserContext, AiPersona, isIncognito)
 router.put('/profile', verifyToken, async (req, res) => {
     try {
-        const { displayName, userContext } = req.body;
+        const { displayName, userContext, aiPersona, isIncognito } = req.body; 
         const user = await User.findById(req.user.id);
         
         if (!user) return res.status(404).json({ error: "Không tìm thấy người dùng." });
 
-        // Chỉ cập nhật những trường được gửi lên
         if (displayName !== undefined) user.displayName = displayName;
         if (userContext !== undefined) user.userContext = userContext;
+        if (aiPersona !== undefined) user.aiPersona = aiPersona; 
+        if (isIncognito !== undefined) user.isIncognito = isIncognito; // Thêm dòng này vào
 
         await user.save();
         
@@ -49,7 +50,9 @@ router.put('/profile', verifyToken, async (req, res) => {
             message: "Đã lưu thông tin của cậu 🌿", 
             user: { 
                 displayName: user.displayName, 
-                userContext: user.userContext 
+                userContext: user.userContext,
+                aiPersona: user.aiPersona,
+                isIncognito: user.isIncognito
             } 
         });
     } catch (error) {

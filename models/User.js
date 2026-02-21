@@ -24,6 +24,21 @@ const userSchema = new mongoose.Schema({
         type: String, 
         default: "Người dùng mới, chưa có thông tin bối cảnh cụ thể." 
     },
+    // 6. HỒ SƠ TÂM LÝ & TRÍ NHỚ DÀI HẠN (CỐT LÕI CỦA AI)
+    userContext: { 
+        type: String, 
+        default: "Người dùng mới, chưa có thông tin bối cảnh cụ thể." 
+    },
+    // ---> THÊM TRƯỜNG NÀY: QUY ĐỊNH RANH GIỚI TRỊ LIỆU <---
+    aiPersona: {
+        type: String,
+        enum: ['hugging', 'socratic', 'tough_love'],
+        default: 'hugging'
+    },
+    isIncognito: {
+        type: Boolean,
+        default: false
+    },
     
     // ĐÂY LÀ VÙNG TRÍ NHỚ MỚI CỦA CẤP ĐỘ 1:
     // Nơi AI tự động đúc kết và nhét các sự kiện quan trọng vào.
