@@ -125,7 +125,7 @@ async function isOutputSafe(text) {
 }
 
 // ==========================================
-// 🧠 TRUNG TÂM XỬ LÝ NLP - V9.0 (BFF PERSONA FIX & AUTO-FALLBACK)
+// 🧠 TRUNG TÂM XỬ LÝ NLP - V9.1 (FIX MẤT TRÍ NHỚ USER)
 // ==========================================
 router.post('/', verifyToken, async (req, res) => {
     try {
@@ -146,6 +146,12 @@ router.post('/', verifyToken, async (req, res) => {
         } else {
             const autoTitle = message === '[SIGH_SIGNAL]' ? 'Một tiếng thở dài...' : (message.length > 30 ? message.substring(0, 30) + '...' : message);
             session = new Session({ userId: req.user.id, title: autoTitle, messages: [], mentalState: "IDLE" }); 
+        }
+
+        // ⚡ BẢN VÁ LỖI: LƯU NGAY TIN NHẮN CỦA USER VÀO DATABASE KHI VỪA NHẬN ĐƯỢC
+        if (!isIncognito) {
+            session.messages.push({ role: 'user', content: message.trim() });
+            await session.save();
         }
 
         const userMsgContent = message === '[SIGH_SIGNAL]' ? '*(Thở dài mệt mỏi)*' : message.trim();
@@ -203,7 +209,7 @@ router.post('/', verifyToken, async (req, res) => {
         }
 
         // ==========================================
-        // 3. MEGA-PROMPT (ĐÃ FIX HỘI CHỨNG "VĂN MẪU AI")
+        // 3. MEGA-PROMPT 
         // ==========================================
         let systemPrompt = `
 [0. THIẾT LẬP VAI TRÒ TUYỆT ĐỐI (CORE IDENTITY)]
@@ -271,19 +277,18 @@ Cú pháp: [UPDATE_MEMORY: - Nội dung ngắn...]
             apiMessages.push({ role: msg.role === 'assistant' ? 'assistant' : 'user', content: msgContent });
         });
 
-        // Nâng cấp spam logic: Dặn AI phản hồi có tâm, không bị liệt não
         if (userSpamCount >= 3) {
             apiMessages.push({ role: 'system', content: '[LƯU Ý NHẸ]: Bạn mình đang nhắn liên tục. Hãy tung hứng lại, đồng tình và bình luận về những gì họ vừa nhắn nhé.' });
         }
 
         // ------------------------------------------
-        // 4. GỌI BỘ NÃO AI (SỬA LẠI MẢNG MODEL THẬT CỦA GROQ ĐỂ TRÁNH NULL FALLBACK)
+        // 4. GỌI BỘ NÃO AI 
         // ------------------------------------------
         const fallbackModels = [
-            "moonshotai/kimi-k2-instruct-0905", // Ưu tiên Kimi (Nếu dùng Proxy API)
-            "llama-3.3-70b-versatile",          // Model mạnh nhất của Groq hiện tại
-            "mixtral-8x7b-32768",               // Siêu nhanh, thấu cảm tốt
-            "gemma2-9b-it"                      // Nhẹ, mượt làm fallback cuối cùng
+            "moonshotai/kimi-k2-instruct-0905", 
+            "llama-3.3-70b-versatile",          
+            "mixtral-8x7b-32768",               
+            "gemma2-9b-it"                      
         ];
 
         let rawResponse = null;
@@ -293,7 +298,7 @@ Cú pháp: [UPDATE_MEMORY: - Nội dung ngắn...]
                 const chatCompletion = await groq.chat.completions.create({
                     messages: apiMessages,
                     model: targetModel, 
-                    temperature: 0.7, // Tăng nhẹ nhiệt độ để AI nói chuyện sáng tạo và tự nhiên hơn
+                    temperature: 0.7, 
                     max_tokens: 1024, 
                 });
                 rawResponse = chatCompletion.choices[0]?.message?.content;
@@ -302,14 +307,13 @@ Cú pháp: [UPDATE_MEMORY: - Nội dung ngắn...]
                     if (targetModel !== fallbackModels[0]) {
                         console.log(`🔄 [AUTO-FALLBACK] Đã chuyển cứu trợ thành công sang: ${targetModel}`);
                     }
-                    break; // Thoát vòng lặp nếu có kết quả
+                    break;
                 }
             } catch (error) {
-                console.warn(`⚠️ [SERVER BUSY] Model ${targetModel} đang bận (Lỗi ${error?.status || 500}). Đang thử model khác...`);
+                console.warn(`⚠️ [SERVER BUSY] Model ${targetModel} đang bận. Đang thử model khác...`);
             }
         }
 
-        // Fallback cực mạnh nếu TẤT CẢ các model đều sập (Sẽ không bao giờ in ra lỗi ngớ ngẩn nữa)
         if (!rawResponse) {
             rawResponse = `[EMO:WHISPER] Mình đang ở đây nha. Cơ mà đường truyền mạng bên mình đang hơi chập chờn một xíu, cậu đợi mình vài giây rồi nhắn lại nghen 🌿`;
         }
@@ -327,7 +331,7 @@ Cú pháp: [UPDATE_MEMORY: - Nội dung ngắn...]
              rawResponse += "\n\n*(Hiên luôn ở đây ủng hộ cậu, nhưng nếu mọi thứ đang quá sức, cậu hãy gọi chuyên gia nhé 🌿)*";
         }
 
-        // 6. BÓC TÁCH KÝ ỨC (Giữ 5 phần tử)
+        // 6. BÓC TÁCH KÝ ỨC 
         const updateRegex = /\[UPDATE_MEMORY:\s*([\s\S]*?)\]/g;
         let match; let newMemory = null;
         
@@ -347,7 +351,7 @@ Cú pháp: [UPDATE_MEMORY: - Nội dung ngắn...]
             .replace(/\[UPDATE_MEMORY:\s*([\s\S]*?)\]/g, '') 
             .trim();
 
-        // 7. LƯU LỊCH SỬ VÀ TRẢ KẾT QUẢ
+        // 7. LƯU LỊCH SỬ AI VÀ TRẢ KẾT QUẢ
         if (!isIncognito && outputStatus !== "DANGER") {
             session.messages.push({ role: 'assistant', content: cleanAiResponse });
             await session.save();
