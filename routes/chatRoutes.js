@@ -7,6 +7,31 @@ const User = require('../models/User');
 const { Groq } = require('groq-sdk');
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY }); 
 
+const Memory = require('../models/Memory');
+const { pipeline } = require('@xenova/transformers');
+
+// 🧠 Khởi tạo mô hình Embedding (Dịch chữ thành Vector)
+let extractor = null;
+const initExtractor = async () => {
+    if (!extractor) {
+        // Dùng model MiniLM siêu nhẹ, chạy trực tiếp trên RAM của Server
+        extractor = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', { quantized: true });
+        console.log("🌟 [RAG Engine] Mô hình nhúng Vector đã sẵn sàng!");
+    }
+};
+initExtractor();
+
+// 📐 Thuật toán đo khoảng cách ngữ nghĩa (Cosine Similarity)
+function cosineSimilarity(vecA, vecB) {
+    let dotProduct = 0, normA = 0, normB = 0;
+    for (let i = 0; i < vecA.length; i++) {
+        dotProduct += vecA[i] * vecB[i];
+        normA += vecA[i] * vecA[i];
+        normB += vecB[i] * vecB[i];
+    }
+    return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
 // ==========================================
 // MIDDLEWARE: NGƯỜI GÁC CỔNG KIỂM TRA TOKEN
 // ==========================================
@@ -192,9 +217,38 @@ router.post('/', verifyToken, async (req, res) => {
             ? user.blacklistedTopics.join(', ') 
             : "Không có";
             
-        const memoryString = user.coreMemories && user.coreMemories.length > 0 
-            ? user.coreMemories.map((m, i) => `${i+1}. ${m}`).join('\n') 
-            : "Chưa có ký ức cốt lõi.";
+        // ------------------------------------------
+        // 🧠 LÕI RAG: TRUY XUẤT KÝ ỨC (VECTOR SEARCH)
+        // ------------------------------------------
+        let memoryString = "Chưa có ký ức nào liên quan.";
+        
+        if (!isIncognito && extractor) {
+            // 1. Mã hóa câu hỏi hiện tại của user thành Vector
+            const userVectorOutput = await extractor(userMsgContent, { pooling: 'mean', normalize: true });
+            const userVector = Array.from(userVectorOutput.data);
+
+            // 2. Lấy toàn bộ Kho Ký Ức của User này ra
+            const allMemories = await Memory.find({ userId: req.user.id });
+
+            if (allMemories.length > 0) {
+                // 3. Đo lường sự đồng điệu (Similarity) giữa câu hỏi và từng ký ức
+                const scoredMemories = allMemories.map(mem => ({
+                    content: mem.content,
+                    score: cosineSimilarity(userVector, mem.embedding)
+                }));
+
+                // 4. Lọc ra những ký ức "Khớp ngữ nghĩa" (Score > 0.3) và lấy top 3
+                const relevantMemories = scoredMemories
+                    .filter(m => m.score > 0.3) // Ngưỡng đồng điệu
+                    .sort((a, b) => b.score - a.score)
+                    .slice(0, 3); // Lôi đúng 3 chuyện liên quan nhất ra
+
+                if (relevantMemories.length > 0) {
+                    memoryString = relevantMemories.map((m, i) => `${i+1}. ${m.content}`).join('\n');
+                    console.log(`🔍 [RAG Retrieved] Đã lôi ra ${relevantMemories.length} ký ức liên quan ở quá khứ.`);
+                }
+            }
+        }
 
         // ------------------------------------------
         // 🚨 BƯỚC 2: TIÊM LỆNH ĐIỀU HƯỚNG TÂM LÝ DỰA TRÊN VECTOR
@@ -334,7 +388,9 @@ ${isIncognito ? "🔴 ẨN DANH: KHÔNG dùng [UPDATE_MEMORY]." : "Nếu có th�
              rawResponse += "\n\n*(Hiên luôn ở đây ủng hộ cậu, nhưng nếu mọi thứ đang quá sức, cậu hãy gọi chuyên gia nhé 🌿)*";
         }
 
-        // 6. BÓC TÁCH KÝ ỨC 
+        // ------------------------------------------
+        // 🗄️ LÕI RAG: LƯU TRỮ KÝ ỨC NGÀN NĂM (VECTOR EMBEDDING)
+        // ------------------------------------------
         const updateRegex = /\[UPDATE_MEMORY:\s*([\s\S]*?)\]/g;
         let match; let newMemory = null;
         
@@ -342,11 +398,23 @@ ${isIncognito ? "🔴 ẨN DANH: KHÔNG dùng [UPDATE_MEMORY]." : "Nếu có th�
             newMemory = match[1].trim();
         }
 
-        if (newMemory && !isIncognito) {
-            if (!user.coreMemories) user.coreMemories = [];
-            user.coreMemories.unshift(newMemory);
-            user.coreMemories = user.coreMemories.slice(0, 5); 
-            await user.save();
+        if (newMemory && !isIncognito && newMemory.length > 2 && extractor) {
+            try {
+                // Biến câu chuyện mới thành Vector
+                const memVectorOutput = await extractor(newMemory, { pooling: 'mean', normalize: true });
+                const memVector = Array.from(memVectorOutput.data);
+                
+                // Lưu thẳng vào Kho Ký Ức độc lập
+                await Memory.create({
+                    userId: req.user.id,
+                    content: newMemory,
+                    embedding: memVector
+                });
+                
+                console.log(`💾 [RAG Vault] Đã đóng băng 1 ký ức vĩnh cửu: "${newMemory}"`);
+            } catch (err) {
+                console.error("🚨 [RAG Vault] Lỗi khi lưu Vector:", err);
+            }
         }
 
         let cleanAiResponse = rawResponse
