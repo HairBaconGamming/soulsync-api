@@ -1,7 +1,18 @@
 const express = require('express');
 const router = express.Router();
 const Memory = require('../models/Memory'); // Model Vector RAG cậu đã tạo
-const { protect } = require('../middlewares/authMiddleware'); // Middleware xác thực của cậu
+const verifyToken = (req, res, next) => {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ error: "Vui lòng đăng nhập để tiếp tục." });
+    
+    try {
+        const verified = jwt.verify(token, process.env.JWT_SECRET);
+        req.user = verified;
+        next();
+    } catch (err) {
+        res.status(401).json({ error: "Phiên đăng nhập hết hạn." });
+    }
+};
 
 // Lấy toàn bộ bầu trời ký ức của User hiện tại
 router.get('/', protect, async (req, res) => {
