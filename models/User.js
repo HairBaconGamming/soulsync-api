@@ -13,7 +13,12 @@ const userSchema = new mongoose.Schema({
     avatar: { type: String, default: "" },
 
     // 4. NHẬN DIỆN GOOGLE OAUTH
-    hwid: { type: String, default: null },
+    hwid: { 
+        type: String, 
+        unique: true, 
+        sparse: true, // ⚡ CHÌA KHÓA GIẢI QUYẾT LỖI Ở ĐÂY
+        default: null 
+    },
 
     // 5. BẢO MẬT & QUÊN MẬT KHẨU (OTP)
     resetPasswordOtp: { type: String, default: null },

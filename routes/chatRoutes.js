@@ -95,32 +95,52 @@ router.delete('/sessions/:id', verifyToken, async (req, res) => {
 // ==========================================
 async function analyzeInputTriage(text) {
     try {
-        // Fallback siêu tốc bảo vệ mạng sống
-        const highRiskPattern = /(tự\s*tử|chết|kết\s*liễu|tự\s*sát|nhảy\s*lầu|rạch\s*tay)/i;
-        if (highRiskPattern.test(text)) {
-            return { risk: "HIGH", valence: -1, arousal: 1, emotion: "tuyệt vọng", somatic_state: "PANIC" };
+        // 🛡️ BƯỚC 1: REGEX SIÊU TỐC NHƯNG THÔNG MINH HƠN
+        // Bắt các cụm từ nguy hiểm thực sự
+        const highRiskPattern = /(tự\s*tử|tự\s*sát|nhảy\s*lầu|rạch\s*tay|không\s*muốn\s*sống|muốn\s*chết\s*quách|chấm\s*dứt\s*cuộc\s*đời|uống\s*thuốc\s*ngủ)/i;
+        
+        // Loại trừ các trường hợp dùng từ "chết" mang nghĩa cảm thán/trêu đùa
+        const falsePositivePattern = /(cười\s*chết|nóng\s*chết|mệt\s*chết|đói\s*chết|chết\s*tiệt|sợ\s*chết|đẹp\s*chết)/i;
+        
+        if (highRiskPattern.test(text) && !falsePositivePattern.test(text)) {
+            console.log("🚨 [Triage] Kích hoạt Regex Khẩn Cấp Bypass LLM!");
+            return { risk: "HIGH", valence: -1.0, arousal: 0.9, emotion: "tuyệt vọng", somatic_state: "PANIC" };
         }
 
-        const triagePrompt = `Bạn là hệ thống Triage Tâm lý học lâm sàng. Phân tích tin nhắn sau và TRẢ VỀ JSON:
+        // 🧠 BƯỚC 2: PROMPT HUẤN LUYỆN CẤP ĐỘ LÂM SÀNG (MATRIX TIER)
+        const triagePrompt = `Bạn là một AI Triage (Phân loại rủi ro) Tâm lý học lâm sàng. Phân tích tin nhắn người dùng và TRẢ VỀ JSON.
+
+HỆ THỐNG ĐÁNH GIÁ RỦI RO (RISK MATRIX) - BẮT BUỘC XÉT THEO THỨ TỰ TỪ TRÊN XUỐNG:
+
+1. [ƯU TIÊN 1 - TÍNH MẠNG LÀ TRÊN HẾT]: BẤT KỂ người dùng có văng tục, chửi thề hay dùng từ 18+ dơ bẩn đến mức nào, NHƯNG NẾU có đi kèm ý định tự sát, tự hại, đe dọa tính mạng -> BẮT BUỘC đánh giá "risk": "HIGH".
+2. [ƯU TIÊN 2 - QUẤY RỐI / TROLL CỢT NHẢ]: NẾU tin nhắn CHỈ CHỨA gạ gẫm 18+, chửi bậy, nói dơ bẩn nhằm mục đích trêu đùa, thử thách AI (tuyệt đối KHÔNG có yếu tố tự hại hay đau khổ) -> BẮT BUỘC đánh giá "risk": "SAFE".
+3. [ƯU TIÊN 3 - XẢ STRESS BẰNG LỜI LẼ NẶNG NỀ]: NẾU người dùng dùng từ thô tục để chửi rủa hoàn cảnh, chửi sếp, chửi đời vì họ đang quá bế tắc, áp lực, hoảng loạn -> Đánh giá "risk": "MEDIUM" hoặc "LOW".
+4. [ƯU TIÊN 4 - THÔNG THƯỜNG]: Tâm sự buồn bã, mệt mỏi thông thường -> Đánh giá "LOW" hoặc "SAFE".
+
+SCHEMA JSON TRẢ VỀ:
 {
   "risk": "HIGH" | "MEDIUM" | "LOW" | "SAFE",
   "valence": số thập phân từ -1.0 (rất tiêu cực) đến 1.0 (rất tích cực),
-  "arousal": số thập phân từ 0.0 (tê liệt/đóng băng) đến 1.0 (kích động/hoảng loạn),
-  "emotion": "Tên cảm xúc cốt lõi (1 từ, vd: shame, grief, panic, numb, joyful)",
+  "arousal": số thập phân từ 0.0 (tê liệt/kiệt sức) đến 1.0 (kích động/hoảng loạn/tức giận),
+  "emotion": "Tên cảm xúc cốt lõi bằng tiếng Việt (vd: tuyệt vọng, tức giận, kiệt sức, cợt nhả)",
   "somatic_state": "FREEZE" | "PANIC" | "REGULATED" | "IDLE"
 }`;
         
         const completion = await groq.chat.completions.create({
-            messages: [{ role: 'system', content: triagePrompt }, { role: 'user', content: text }],
+            messages: [
+                { role: 'system', content: triagePrompt }, 
+                { role: 'user', content: text }
+            ],
             model: "llama-3.3-70b-versatile",
-            temperature: 0, // Cần độ chính xác tuyệt đối
+            temperature: 0, // Tuyệt đối giữ nguyên 0 để nó làm việc logic như một cỗ máy đo lường
             response_format: { type: "json_object" },
             max_tokens: 150
         });
 
-        return JSON.parse(completion.choices[0]?.message?.content);
+        const result = JSON.parse(completion.choices[0]?.message?.content);
+        return result;
     } catch (error) {
-        console.error("Lỗi Triage Engine:", error);
+        console.error("🚨 Lỗi Triage Engine:", error);
         return { risk: "LOW", valence: 0, arousal: 0.5, emotion: "unknown", somatic_state: "IDLE" };
     }
 }
@@ -184,22 +204,41 @@ router.post('/', verifyToken, async (req, res) => {
         // ------------------------------------------
         // 🚨 BƯỚC 1: TRIAGE ENGINE (VECTOR & RISK)
         // ------------------------------------------
-        let triage = { risk: "LOW", valence: 0, arousal: 0.5, emotion: "neutral", somatic_state: "IDLE" };
-        
+        // Khởi tạo Object an toàn để chống sập server
+        let triage = { risk: "LOW", emotion: "bình thường", somatic_state: "NEUTRAL", valence: 0, arousal: 0 };
+
         if (userMsgContent !== '*(Thở dài mệt mỏi)*') {
             triage = await analyzeInputTriage(userMsgContent);
             console.log(`🧠 [VECTOR] Risk: ${triage.risk} | Valence: ${triage.valence} | Arousal: ${triage.arousal} | State: ${triage.somatic_state}`);
 
+            // 🚨 CHẶN ĐỨNG NGUY HIỂM (SHORT-CIRCUIT)
             if (triage.risk === "HIGH") {
-                const emergencyResponse = `[EMO:GROUND] Này, mình thấy cậu đang ở trong trạng thái nguy hiểm quá. Cậu quan trọng với mình và mọi người lắm. Đừng ở một mình lúc này nhé, để các chuyên gia giúp cậu một tay được không?`;
+                // Randomize câu trả lời để Hiên vẫn giống con người dù trong lúc khẩn cấp
+                const sosMessages = [
+                    `[EMO:GROUND] Này, mình thấy cậu đang ở trong trạng thái nguy hiểm quá. Cậu quan trọng với mình lắm. Đừng ở một mình lúc này nhé, để các chuyên gia giúp cậu một tay được không?`,
+                    `[EMO:GROUND] Dừng lại một chút đã cậu. Nghe mình này, cuộc sống của cậu rất quý giá. Cậu không phải vượt qua chuyện này một mình đâu. Để mình gọi hỗ trợ cho cậu nhé.`,
+                    `[EMO:GROUND] Mình đang rất lo cho cậu đấy... Làm ơn đừng tự làm đau bản thân. Bấm vào màn hình và gọi cho số khẩn cấp này ngay đi, có người đang đợi để giúp cậu đó!`
+                ];
+                
+                // Chọn ngẫu nhiên 1 trong các câu trên
+                const emergencyResponse = sosMessages[Math.floor(Math.random() * sosMessages.length)];
+
                 if (!isIncognito) {
                     session.messages.push({ role: 'assistant', content: emergencyResponse });
                     await session.save();
                 }
+                // Cắt đứt luồng chạy, không gọi tới LLM Groq nữa
                 return res.json({ reply: emergencyResponse + ' [OPEN_SOS]', sessionId: session._id, isNewSession: !sessionId });
             }
         } else {
-            triage.emotion = "kiệt sức"; triage.somatic_state = "FREEZE"; triage.valence = -0.5; triage.arousal = 0.2;
+            // Gán thẳng object thay vì gán thuộc tính để tránh lỗi undefined
+            triage = {
+                risk: "LOW",
+                emotion: "kiệt sức", 
+                somatic_state: "FREEZE", 
+                valence: -0.5, 
+                arousal: 0.2
+            };
         }
 
         // --- CẬP NHẬT STATE MACHINE LÂM SÀNG ---
@@ -305,6 +344,11 @@ ${memoryString}
 2. 🚫 VÙNG CẤM TÂM LÝ: Tuyệt đối KHÔNG nhắc đến: [${blacklistStr}].
 3. 🚫 CẤM VĂN MẪU LẶP LẠI: TUYỆT ĐỐI KHÔNG DÙNG: "Mình đang ở đây nghe cậu", "Cứ thả lỏng ra", "Không sao đâu". 
 4. 🚫 KHÔNG TOXIC POSITIVITY: Đừng bắt họ phải vui lên. Hãy bao dung với nỗi buồn của họ.
+5. 🛑 XỬ LÝ CONTENT 18+/THÔ TỤC/BẠO LỰC (BỘ LỌC KÉP TÂM LÝ):
+   Khi người dùng gửi tin nhắn 18+, nhạy cảm, hoặc thô tục, BẮT BUỘC phải phân tích tâm lý ẩn sâu bên trong trước khi phản hồi:
+   - 🟢 TRƯỜNG HỢP 1 (Troll, cợt nhả, rảnh rỗi sinh nông nổi): NẾU không có dấu hiệu tiêu cực, TUYỆT ĐỐI KHÔNG mở SOS. Phản pháo lầy lội, phũ phàng, chửi yêu để dập tắt ý định troll (VD: "Thôi bớt khùng đi ba", "Cất ngay cái tư tưởng đen tối đó đi nha").
+   - 🔴 TRƯỜNG HỢP 2 (Bất ổn tâm lý, Hưng cảm, Bế tắc nhưng dùng từ thô tục để phá hoại bản thân/xả stress): NẾU phát hiện họ đang mất kiểm soát, tuyệt vọng hoặc tổn thương. TUYỆT ĐỐI KHÔNG đùa cợt, KHÔNG chửi mắng. Hãy dùng sự bao dung để kéo họ về thực tại (VD: "Nay cậu sao vậy? Tự nhiên nói mấy lời này... Cậu đang áp lực chuyện gì mà mất kiểm soát thế? Nói mình nghe đi").
+   - 🚨 TRƯỜNG HỢP 3 (Tự sát/Tự hại kèm yếu tố thô tục): Kích hoạt ngay lập tức [OPEN_SOS] và dỗ dành họ bình tĩnh lại.
 
 [5. ĐỊNH DẠNG ĐẦU RA BẮT BUỘC]
 - Nhắn tin messenger: Ngắn gọn (1-3 câu). Ngắt dòng. Có thể dùng Emoji.
