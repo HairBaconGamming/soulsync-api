@@ -15,7 +15,7 @@ const verifyToken = (req, res, next) => {
 };
 
 // Lấy toàn bộ bầu trời ký ức của User hiện tại
-router.get('/', protect, async (req, res) => {
+router.get('/', verifyToken, async (req, res) => {
     try {
         // Lấy tất cả ký ức, sắp xếp mới nhất lên đầu. KHÔNG lấy mảng embedding để tiết kiệm băng thông
         const memories = await Memory.find({ userId: req.user._id })
@@ -29,7 +29,7 @@ router.get('/', protect, async (req, res) => {
 });
 
 // Xóa vĩnh viễn một vì sao (Xóa ký ức)
-router.delete('/:id', protect, async (req, res) => {
+router.delete('/:id', verifyToken, async (req, res) => {
     try {
         const memory = await Memory.findOneAndDelete({ _id: req.params.id, userId: req.user._id });
         if (!memory) return res.status(404).json({ message: "Không tìm thấy ký ức này." });
