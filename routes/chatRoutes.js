@@ -363,7 +363,7 @@ ${memoryString}
 - Có thể có ít nhất 1 thẻ ở đầu câu: [EMO:WHISPER] (khuya/buồn), [EMO:WARM] (vui/ấm áp), [EMO:GROUND] (hoảng loạn/nghiêm túc).
 
 [6. KÝ ỨC NGẦM & LỆNH UI]
-${isIncognito ? "🔴 ẨN DANH: KHÔNG dùng [UPDATE_MEMORY]." : "Nếu có thông tin mới về sở thích, nỗi buồn, ghi lại ở ĐÁY câu trả lời: [UPDATE_MEMORY: - Nội dung ngắn...]"}
+${isIncognito ? "🔴 ẨN DANH: KHÔNG dùng [UPDATE_MEMORY]." : "Nếu có thông tin mới, BẮT BUỘC ghi lại theo đúng cú pháp này ở ĐÁY câu trả lời: [UPDATE_MEMORY: Nội dung ngắn | positive/negative/neutral]"}
 - Lệnh UI (Chỉ 1 lệnh ở cuối nếu cần thiết): [OPEN_SOS] | [OPEN_RELAX] | [OPEN_CBT] | [OPEN_JAR] | [OPEN_MICRO] | [OPEN_TREE] | [OPEN_RADIO]
 `;
 
@@ -440,32 +440,28 @@ ${isIncognito ? "🔴 ẨN DANH: KHÔNG dùng [UPDATE_MEMORY]." : "Nếu có th�
              rawResponse += "\n\n*(Hiên luôn ở đây ủng hộ cậu, nhưng nếu mọi thứ đang quá sức, cậu hãy gọi chuyên gia nhé 🌿)*";
         }
 
-        // ------------------------------------------
-        // 🗄️ LÕI RAG: LƯU TRỮ KÝ ỨC NGÀN NĂM (VECTOR EMBEDDING)
-        // ------------------------------------------
-        const updateRegex = /\[UPDATE_MEMORY:\s*([\s\S]*?)\]/g;
-        let match; let newMemory = null;
+        // 🗄️ BẮT LẤY KÝ ỨC VÀ CẢM XÚC
+        const updateRegex = /\[UPDATE_MEMORY:\s*(.*?)\s*\|\s*(positive|negative|neutral)\]/ig;
+        let match; 
+        let newMemory = null;
+        let memSentiment = 'neutral';
         
         while ((match = updateRegex.exec(rawResponse)) !== null) {
             newMemory = match[1].trim();
+            memSentiment = match[2].toLowerCase();
         }
 
         if (newMemory && !isIncognito && newMemory.length > 2 && extractor) {
             try {
-                // Biến câu chuyện mới thành Vector
                 const memVectorOutput = await extractor(newMemory, { pooling: 'mean', normalize: true });
-                const memVector = Array.from(memVectorOutput.data);
-                
-                // Lưu thẳng vào Kho Ký Ức độc lập
                 await Memory.create({
                     userId: req.user.id,
                     content: newMemory,
-                    embedding: memVector
+                    sentiment: memSentiment, // 🌟 Lưu cảm xúc vào DB
+                    embedding: Array.from(memVectorOutput.data)
                 });
-                
-                console.log(`💾 [RAG Vault] Đã đóng băng 1 ký ức vĩnh cửu: "${newMemory}"`);
             } catch (err) {
-                console.error("🚨 [RAG Vault] Lỗi khi lưu Vector:", err);
+                console.error("Lỗi lưu Vector Memory:", err);
             }
         }
 

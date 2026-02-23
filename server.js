@@ -6,6 +6,8 @@ const cors = require('cors');
 // Khởi tạo ứng dụng Express
 const app = express();
 
+const memoryRoutes = require('./routes/memoryRoutes');
+
 // ==========================================
 // 1. CẤU HÌNH MIDDLEWARE & CORS
 // ==========================================
@@ -66,6 +68,8 @@ app.use('/api/user', userRoutes);
 // app.use('/api/user', require('./routes/userRoutes')); 
 
 app.use('/api', require('./routes/toolRoutes'));
+
+app.use('/api/memories', memoryRoutes);
 
 // ==========================================
 // 5. BẮT LỖI TOÀN CỤC (GLOBAL ERROR HANDLER)
