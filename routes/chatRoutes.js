@@ -10,16 +10,18 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const Memory = require('../models/Memory');
 const { pipeline } = require('@xenova/transformers');
 
-// 🧠 Khởi tạo mô hình Embedding (Dịch chữ thành Vector)
+// 🧠 Khởi tạo mô hình Embedding
 let extractor = null;
-const initExtractor = async () => {
+const getExtractor = async () => {
     if (!extractor) {
-        // Dùng model MiniLM siêu nhẹ, chạy trực tiếp trên RAM của Server
+        const { pipeline } = await import('@xenova/transformers'); // Dynamic import nếu cần
         extractor = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', { quantized: true });
         console.log("🌟 [RAG Engine] Mô hình nhúng Vector đã sẵn sàng!");
     }
+    return extractor;
 };
-initExtractor();
+// Vẫn gọi khởi tạo sớm để load model vào RAM
+getExtractor();
 
 // 📐 Thuật toán đo khoảng cách ngữ nghĩa (Cosine Similarity)
 function cosineSimilarity(vecA, vecB) {
@@ -363,7 +365,7 @@ ${memoryString}
 - Có thể có ít nhất 1 thẻ ở đầu câu: [EMO:WHISPER] (khuya/buồn), [EMO:WARM] (vui/ấm áp), [EMO:GROUND] (hoảng loạn/nghiêm túc).
 
 [6. KÝ ỨC NGẦM & LỆNH UI]
-${isIncognito ? "🔴 ẨN DANH: KHÔNG dùng [UPDATE_MEMORY]." : "Nếu có thông tin mới, BẮT BUỘC ghi lại theo đúng cú pháp này ở ĐÁY câu trả lời: [UPDATE_MEMORY: Nội dung ngắn | positive/negative/neutral]"}
+${isIncognito ? "🔴 ẨN DANH: KHÔNG dùng [UPDATE_MEMORY]." : "Nếu có thông tin mới về sở thích, nỗi buồn hay sự kiện quan trọng, BẮT BUỘC ghi lại ở ĐÁY câu trả lời theo cú pháp:\n[UPDATE_MEMORY: Nội dung ký ức | sentiment]\nVí dụ: [UPDATE_MEMORY: Cậu ấy rất thích ăn phở gà | positive]"}
 - Lệnh UI (Chỉ 1 lệnh ở cuối nếu cần thiết): [OPEN_SOS] | [OPEN_RELAX] | [OPEN_CBT] | [OPEN_JAR] | [OPEN_MICRO] | [OPEN_TREE] | [OPEN_RADIO]
 `;
 
@@ -440,34 +442,39 @@ ${isIncognito ? "🔴 ẨN DANH: KHÔNG dùng [UPDATE_MEMORY]." : "Nếu có th�
              rawResponse += "\n\n*(Hiên luôn ở đây ủng hộ cậu, nhưng nếu mọi thứ đang quá sức, cậu hãy gọi chuyên gia nhé 🌿)*";
         }
 
-        // 🗄️ BẮT LẤY KÝ ỨC VÀ CẢM XÚC
-        const updateRegex = /\[UPDATE_MEMORY:\s*(.*?)\s*\|\s*(positive|negative|neutral)\]/ig;
-        let match; 
-        let newMemory = null;
-        let memSentiment = 'neutral';
-        
-        while ((match = updateRegex.exec(rawResponse)) !== null) {
-            newMemory = match[1].trim();
-            memSentiment = match[2].toLowerCase();
-        }
+        // 🗄️ BẮT LẤY KÝ ỨC VÀ CẢM XÚC (FIXED VERSION)
+        // Regex thông minh hơn: Dấu | và sentiment là tùy chọn (nếu thiếu mặc định là neutral)
+        const updateRegex = /\[UPDATE_MEMORY:\s*([^\]|]+?)(?:\s*\|\s*(positive|negative|neutral))?\s*\]/ig;
+        let match;
+        const activeExtractor = await getExtractor(); // Đảm bảo extractor đã load
 
-        if (newMemory && !isIncognito && newMemory.length > 2 && extractor) {
-            try {
-                const memVectorOutput = await extractor(newMemory, { pooling: 'mean', normalize: true });
-                await Memory.create({
-                    userId: req.user.id,
-                    content: newMemory,
-                    sentiment: memSentiment, // 🌟 Lưu cảm xúc vào DB
-                    embedding: Array.from(memVectorOutput.data)
-                });
-            } catch (err) {
-                console.error("Lỗi lưu Vector Memory:", err);
+        while ((match = updateRegex.exec(rawResponse)) !== null) {
+            const memoryContent = match[1].trim();
+            const sentiment = (match[2] || 'neutral').toLowerCase();
+
+            // Xử lý lưu từng ký ức ngay bên trong vòng lặp
+            if (memoryContent.length > 2 && !isIncognito && activeExtractor) {
+                try {
+                    console.log(`💾 [RAG Vault] Đang mã hóa ký ức: "${memoryContent}"...`);
+                    const memVectorOutput = await activeExtractor(memoryContent, { pooling: 'mean', normalize: true });
+                    
+                    await Memory.create({
+                        userId: req.user.id,
+                        content: memoryContent,
+                        sentiment: sentiment,
+                        embedding: Array.from(memVectorOutput.data)
+                    });
+                    console.log(`✅ [RAG Vault] Đã lưu vĩnh viễn: ${memoryContent}`);
+                } catch (err) {
+                    console.error("🚨 Lỗi lưu Vector Memory:", err);
+                }
             }
         }
 
+        // Xóa sạch các thẻ kỹ thuật trước khi trả về cho User
         let cleanAiResponse = rawResponse
             .replace(/<think>[\s\S]*?<\/think>/g, '') 
-            .replace(/\[UPDATE_MEMORY:\s*([\s\S]*?)\]/g, '') 
+            .replace(/\[UPDATE_MEMORY:[\s\S]*?\]/ig, '') // Regex xóa linh hoạt hơn
             .trim();
 
         // 7. LƯU LỊCH SỬ AI VÀ TRẢ KẾT QUẢ
